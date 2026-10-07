@@ -1,0 +1,9 @@
+{
+  "name": "帧间 · V1 交互原型导入",
+  "id": "shenjian-v1-prototype-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"] }
+}

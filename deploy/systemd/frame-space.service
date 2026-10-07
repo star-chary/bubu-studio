@@ -1,0 +1,28 @@
+[Unit]
+Description=Frame Space studio backend
+After=network-online.target postgresql@16-main.service
+Wants=network-online.target
+Requires=postgresql@16-main.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=frame-space
+Group=frame-space
+WorkingDirectory=/var/lib/frame-space
+EnvironmentFile=/etc/frame-space/backend.env
+ExecStart=/opt/frame-space/current/backend/frame-space
+Restart=always
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/frame-space
+SyslogIdentifier=frame-space
+
+[Install]
+WantedBy=multi-user.target

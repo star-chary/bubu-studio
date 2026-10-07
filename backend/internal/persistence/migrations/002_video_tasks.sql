@@ -1,0 +1,11 @@
+ALTER TABLE generation_tasks ADD COLUMN kind text NOT NULL DEFAULT 'image' CHECK (kind IN ('image','video'));
+ALTER TABLE generation_tasks ADD COLUMN compiled_prompt text NOT NULL DEFAULT '';
+ALTER TABLE generation_tasks ADD COLUMN bindings jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE generation_tasks ADD COLUMN provider_task_id text NOT NULL DEFAULT '';
+ALTER TABLE generation_tasks ADD COLUMN provider_status text NOT NULL DEFAULT '';
+ALTER TABLE generation_tasks ADD COLUMN provider_url text NOT NULL DEFAULT '';
+ALTER TABLE generation_tasks ADD COLUMN polling_error jsonb;
+ALTER TABLE generation_tasks DROP CONSTRAINT generation_tasks_status_check;
+ALTER TABLE generation_tasks ADD CONSTRAINT generation_tasks_status_check CHECK (status IN ('queued','submitting','running','saving','succeeded','failed','interrupted','storage_failed'));
+DROP INDEX generation_one_active;
+CREATE UNIQUE INDEX generation_one_active ON generation_tasks ((1)) WHERE status IN ('queued','submitting','running','saving');

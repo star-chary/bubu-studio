@@ -1,0 +1,65 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+*.local
+*.log
+.env
+.env.*
+!.env.example
+
+# Go 后端本地编译产物
+backend/bin/
+backend/.storage-tmp/
+frontend/artifacts/
+.data/
+
+# 私钥、证书包、云服务凭据及本机配置
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.ssh/
+.aws/
+.aliyun/
+.npmrc
+*.env
+*.env.*
+!*.env.example
+credentials.json
+service-account*.json
+secrets/
+secrets.*
+
+# 真实部署配置只保留在本地；仓库提供 studio.example.conf
+/deploy/nginx/studio.*.conf
+!/deploy/nginx/studio.example.conf
+
+# Figma 在线文件关联状态仅供本机使用
+/design/figma-v1-state.json
+
+# 数据、备份、会话、缓存与临时导出（迁移 SQL 和测试素材仍提交）
+backups/
+uploads/
+*.dump
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sql.gz
+*.sql.zip
+*.bak
+*.pid
+cookies.txt
+storage-state*.json
+storageState*.json
+playwright/.auth/
+.auth/
+coverage/
+__pycache__/
+*.pyc
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
