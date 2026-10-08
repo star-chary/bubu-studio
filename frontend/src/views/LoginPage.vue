@@ -50,7 +50,7 @@ async function submit() {
           <p v-if="error" class="login-error" role="alert">{{ error }}</p>
           <button class="login-submit" type="submit" :disabled="busy">{{ busy ? '正在进入…' : resumeEmail ? '重新登录并继续' : '继续' }}<span v-if="!busy" aria-hidden="true">→</span></button>
         </form>
-        <p v-if="!resumeEmail" class="login-registration">未注册的邮箱将自动创建账号。<br />本次输入的密码将作为登录密码。</p>
+        <p v-if="!resumeEmail" class="login-registration">未注册的邮箱将自动创建账号，并获赠 200 测试积分。<br />本次输入的密码将作为登录密码。</p>
         <p class="login-recovery">暂不支持找回密码，请妥善保存。</p>
       </section>
     </div>

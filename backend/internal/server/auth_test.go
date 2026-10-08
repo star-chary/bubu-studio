@@ -128,6 +128,94 @@ func TestAuthPasswordLengthBounds(t *testing.T) {
 	}
 }
 
+func TestNewRegistrationGrantsWelcomeCreditsOnce(t *testing.T) {
+	db := authDB(t)
+	ctx := context.Background()
+	h := NewRouter(nil, &stubAssets{}, db)
+	email, password := "welcome@example.test", "welcome password"
+	created := signIn(t, h, email, password)
+
+	account := func(client *authClient, want int64) {
+		t.Helper()
+		w := authRequest(h, client, http.MethodGet, "/api/credits", nil, nil)
+		assertStatus(t, w, 200)
+		var credits persistence.CreditAccount
+		if err := json.Unmarshal(w.Body.Bytes(), &credits); err != nil || credits != (persistence.CreditAccount{Available: want}) {
+			t.Fatalf("unexpected credits: %s, %v", w.Body.String(), err)
+		}
+	}
+	account(created, persistence.SignupTestCredits)
+	var operation, key string
+	var points, availableAfter, ledgerCount int64
+	readWelcome := func() {
+		t.Helper()
+		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger WHERE user_id=$1`, created.session.User.ID).Scan(&ledgerCount); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Pool.QueryRow(ctx, `SELECT operation,available_delta,available_after,idempotency_key FROM credit_ledger WHERE user_id=$1`, created.session.User.ID).Scan(&operation, &points, &availableAfter, &key); err != nil {
+			t.Fatal(err)
+		}
+		if ledgerCount != 1 || operation != "grant" || points != persistence.SignupTestCredits || availableAfter != persistence.SignupTestCredits || key != "signup-welcome-v1:"+created.session.User.ID {
+			t.Fatalf("unexpected welcome grant: count=%d, operation=%q, points=%d, after=%d, key=%q", ledgerCount, operation, points, availableAfter, key)
+		}
+	}
+	readWelcome()
+
+	again := signIn(t, h, " WELCOME@EXAMPLE.TEST ", password)
+	if again.session.User.ID != created.session.User.ID {
+		t.Fatal("login created a second user")
+	}
+	account(again, persistence.SignupTestCredits)
+	readWelcome()
+	assertStatus(t, authRequest(h, nil, http.MethodPost, "/api/auth/login", map[string]string{"email": email, "password": "wrong password"}, nil), 401)
+	readWelcome()
+
+	// Accounts created before this feature still log in without receiving a retroactive grant.
+	legacyID, legacyEmail := identity.ID(), "legacy-zero@example.test"
+	if _, err := db.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)`, legacyID, legacyEmail, identity.PasswordHash(password)); err != nil {
+		t.Fatal(err)
+	}
+	legacy := signIn(t, h, legacyEmail, password)
+	account(legacy, 0)
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger WHERE user_id=$1`, legacyID).Scan(&ledgerCount); err != nil || ledgerCount != 0 {
+		t.Fatalf("legacy login unexpectedly granted credits: %d, %v", ledgerCount, err)
+	}
+}
+
+func TestSignupGrantFailureRollsBackRegistration(t *testing.T) {
+	db := authDB(t)
+	ctx := context.Background()
+	_, err := db.Pool.Exec(ctx, `CREATE FUNCTION reject_signup_grant() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN IF NEW.idempotency_key LIKE 'signup-welcome-v1:%' THEN RAISE EXCEPTION 'test grant failure'; END IF;
+		RETURN NEW; END $$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `CREATE TRIGGER reject_signup_grant BEFORE INSERT ON credit_ledger FOR EACH ROW EXECUTE FUNCTION reject_signup_grant()`); err != nil {
+		t.Fatal(err)
+	}
+	email := "rollback@example.test"
+	if _, err := db.LoginOrCreate(ctx, email, "rollback password"); err == nil {
+		t.Fatal("expected signup grant to fail")
+	}
+	var users, sessions, accounts, entries int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE email=$1`, email).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM user_sessions`).Scan(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_accounts`).Scan(&accounts); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger`).Scan(&entries); err != nil {
+		t.Fatal(err)
+	}
+	if users != 0 || sessions != 0 || accounts != 0 || entries != 0 {
+		t.Fatalf("failed signup left partial records: users=%d sessions=%d accounts=%d entries=%d", users, sessions, accounts, entries)
+	}
+}
+
 func TestAuthLoginOwnershipAndRevocation(t *testing.T) {
 	db := authDB(t)
 	ctx := context.Background()
@@ -288,6 +376,14 @@ func TestConcurrentRegistrationNeverReplacesPassword(t *testing.T) {
 	}
 	if sessions[winner].User.ID == "" {
 		t.Fatal("missing user")
+	}
+	account, err := db.Credits(ctx, sessions[winner].User.ID)
+	if err != nil || account != (persistence.CreditAccount{Available: persistence.SignupTestCredits}) {
+		t.Fatalf("concurrent signup credits: %+v, %v", account, err)
+	}
+	var grants int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger WHERE user_id=$1 AND operation='grant'`, sessions[winner].User.ID).Scan(&grants); err != nil || grants != 1 {
+		t.Fatalf("concurrent signup grants: %d, %v", grants, err)
 	}
 }
 

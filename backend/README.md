@@ -1,8 +1,10 @@
 # Bubu Studio 后端
 
+2026-10-08 注册赠分更新：新邮箱首次创建账号时，在创建用户和首个 Session 的同一 PostgreSQL 事务内写入可用 200 分的积分账户及一条 `grant` 流水；流水幂等键按用户唯一。已有账号登录不重复赠送，功能上线前的旧账号不自动补发。没有公开赠分或充值接口，也没有新增数据库表／迁移。本地隔离 PostgreSQL 的 Go 测试、vet、前端构建与 18/18 项登录／积分浏览器回归通过；真实 Chrome → Vite → Gin → 隔离 schema 验证两个新账号各得 200 分且重登不重复。发布 `20261008T042639Z` 已生成备份并完成正式 HTTPS 验收：注册获得 200 分及一条赠送流水，Chrome 重登不重复，临时验收账号已精确清理。本次未调用真实方舟模型。邮箱未验证，用户选择暂不设置每日新账号总量上限；当前没有平台预算熔断，批量换邮箱或 IP 的赠分风险仍存在。详见 [登录与鉴权](../docs/authentication.md) 和 [测试积分](../docs/test-credits.md)。
+
 2026-10-07 视频模型更新：支持 Seedance 2.5、2.0、2.0 fast、2.0 mini 的文生视频和全能参考；按模型校验输出参数及真实参考素材，并按 `test-2026-10-07-v2` 报价。首版只开放 480p／720p。未新增数据库表或迁移；三个新增模型的账户授权和真实结果尚未付费验收。见 [视频模型与文生视频](../docs/video-models.md)。
 
-2026-10-06：已加入测试积分，图片与视频均需先报价并提交 `acceptedPoints`、`priceVersion`；后端重新核价，在 PostgreSQL 事务中冻结余额、写任务和流水。结果可持久交付才结算，明确失败退回，不确定结果保持冻结待核查。无自动赠送或付费充值。独立测试库 Go／HTTP 测试通过；主库备份与 006 迁移已验证，唯一用户已发放 200 分并核对可用 200、冻结 0。未真实调用模型，详见 [测试积分](../docs/test-credits.md)。
+2026-10-06 历史阶段：已加入测试积分，图片与视频均需先报价并提交 `acceptedPoints`、`priceVersion`；后端重新核价，在 PostgreSQL 事务中冻结余额、写任务和流水。结果可持久交付才结算，明确失败退回，不确定结果保持冻结待核查。当时无自动赠送或付费充值。独立测试库 Go／HTTP 测试通过；主库备份与 006 迁移已验证，唯一用户已发放 200 分并核对可用 200、冻结 0。未真实调用模型，详见 [测试积分](../docs/test-credits.md)。
 
 2026-10-05：除 `/health` 和统一登录入口外，业务接口必须通过 PostgreSQL Session 认证；写请求验证来源和 CSRF Token。无 DATABASE_URL 时返回 503，已取消匿名业务入口。账号、会话、所有权、迁移和本地配置见 [登录与鉴权](../docs/authentication.md)。
 
@@ -79,7 +81,7 @@ backend/
 
 路由负责按请求方法和路径找到处理函数。日志和异常恢复是通用中间件：前者记录请求路径、状态和耗时，后者在处理请求发生 panic 时恢复并返回错误。图片 Handler 校验 HTTP 输入，Ark Client 负责模型调用，Storage 负责文件校验、目录分配和 OSS 读写。
 
-测试积分接口：`GET /api/credits` 返回当前用户的 `{available,reserved}`，`GET /api/credits/ledger` 返回分页流水，`POST /api/credits/quote` 为已保存的图片或视频节点报价。积分发放没有公开 HTTP 接口，新注册账号为 0 分。生成提交时后端重新报价；缺积分返回 402 / `CREDITS_INSUFFICIENT`，报价版本或分数变化返回 409 / `CREDIT_QUOTE_CHANGED`，资源不属于当前用户或不存在返回 404 / `NOT_FOUND`。这些拒绝不创建任务、不调用方舟。接口及状态机见 [测试积分](../docs/test-credits.md)。
+测试积分接口：`GET /api/credits` 返回当前用户的 `{available,reserved}`，`GET /api/credits/ledger` 返回分页流水，`POST /api/credits/quote` 为已保存的图片或视频节点报价。积分发放没有公开 HTTP 接口；新注册账号由 `LoginOrCreate` 在注册事务中获得一次 200 分及唯一流水，旧账号登录不补发。生成提交时后端重新报价；缺积分返回 402 / `CREDITS_INSUFFICIENT`，报价版本或分数变化返回 409 / `CREDIT_QUOTE_CHANGED`，资源不属于当前用户或不存在返回 404 / `NOT_FOUND`。这些拒绝不创建任务、不调用方舟。接口及状态机见 [测试积分](../docs/test-credits.md)。
 
 ## 图片生成接口
 

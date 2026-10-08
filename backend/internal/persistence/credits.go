@@ -14,6 +14,9 @@ import (
 )
 
 const CreditPriceVersion = "test-2026-10-07-v2"
+const SignupTestCredits int64 = 200
+
+const signupCreditKeyPrefix = "signup-welcome-v1:"
 
 var (
 	ErrCreditsInsufficient = errors.New("insufficient test credits")
@@ -39,6 +42,20 @@ type CreditEntry struct {
 type CreditQuote struct {
 	Points       int64  `json:"points"`
 	PriceVersion string `json:"priceVersion"`
+}
+
+// grantSignupCredits is called only after a new users row was inserted.
+// Its caller owns the transaction so a failed grant cannot leave an account
+// registered without its promised starting balance.
+func grantSignupCredits(ctx context.Context, tx pgx.Tx, userID string) error {
+	var account CreditAccount
+	if err := tx.QueryRow(ctx, `INSERT INTO credit_accounts(user_id,available) VALUES($1,$2)
+		RETURNING available,reserved`, userID, SignupTestCredits).Scan(&account.Available, &account.Reserved); err != nil {
+		return mapError(err)
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key)
+		VALUES($1,'grant',$2,0,$3,$4,$5)`, userID, SignupTestCredits, account.Available, account.Reserved, signupCreditKeyPrefix+userID)
+	return mapError(err)
 }
 
 func (s *Store) Credits(ctx context.Context, userID string) (CreditAccount, error) {

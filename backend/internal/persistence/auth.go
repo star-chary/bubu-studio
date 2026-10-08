@@ -57,6 +57,9 @@ func (s *Store) LoginOrCreate(ctx context.Context, email, password string) (Sess
 			if !identity.PasswordMatches(password, hash) || status != "active" {
 				return Session{}, ErrCredentials
 			}
+		} else if err := grantSignupCredits(ctx, tx, user.ID); err != nil {
+			// Registration, its first session and the test-credit grant commit together.
+			return Session{}, err
 		}
 	} else {
 		// Serialize disabling/password changes with session creation.

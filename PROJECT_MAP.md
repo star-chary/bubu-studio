@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-08 注册赠分更新：新账号创建时，在用户与首个 Session 的同一 PostgreSQL 事务中写入 200 测试积分账户和唯一 `grant` 流水；已有账号登录不重复赠送，旧账号不自动补发，充值仍未开放。未新增表或迁移。独立 PostgreSQL 的 Go 全包测试、vet、前端构建及 18/18 项登录／积分浏览器回归通过；真实 Chrome → Vite → Gin → 隔离 schema 验证两个新账号各得 200 分且重登不重复，未调用方舟或 OSS。发布 `20261008T042639Z` 已生成备份并完成正式 HTTPS 注册赠分验收：新账号 200 分及一条流水，Chrome 重登不重复，临时账号已精确清理；未调用生成模型。邮箱未验证，用户选择暂不设置每日新账号总量上限，当前也没有平台预算熔断；换邮箱或 IP 批量领取积分的风险仍存在。详见 [登录与鉴权](./docs/authentication.md) 和 [测试积分](./docs/test-credits.md)。
+
 2026-10-07 部署验证记录：正式 HTTPS 登录／会话、画布保存、CSRF、PNG 上传／读取／Range、匿名拒绝及退出失效已通过接口验收；密码 6～20 字符边界经过真实接口与浏览器验证。本轮未调用付费模型。公开仓库提供 [部署指南](./docs/deployment.md) 和示例配置，具体服务器资料及发布记录保留在本地。
 
 2026-10-07 视频模型更新：视频节点支持 Seedance 2.5、2.0、2.0 fast、2.0 mini，提供文生视频／全能参考两种输入。模型、时长、参考素材规则、积分报价与后端方舟请求随选择变化；首版只开放 480p／720p。画布快照新增可选 `videoModel`／`videoMode` 字段，旧画布按 2.5／全能参考读取；无新表或迁移。隔离 PostgreSQL 的 Go 全包测试、vet、前端构建及 89/89 浏览器模拟接口回归通过，未调用真实方舟。实现与验收边界见 [视频模型与文生视频](./docs/video-models.md)。
@@ -34,14 +36,15 @@
 | `deploy/systemd/frame-space.service` | 已启用的专用用户 Go 常驻服务，使用独立环境配置和工作目录 |
 | `backend/internal/server/proxy.go`、`proxy_test.go` | 可选可信代理 IP/CIDR 配置与客户端 IP 解析边界测试 |
 | `docs/test-credits.md` | 测试积分定价、发放边界、账户／流水模型、生成结算状态、接口与验证 |
-| `backend/internal/persistence/credits.go`、`migrations/006_test_credits.sql` | 按用户核价、积分账户与流水、原子冻结／结算、任务价格快照 |
+| `backend/internal/persistence/credits.go`、`migrations/006_test_credits.sql` | 按用户核价、注册赠分、积分账户与流水、原子冻结／结算、任务价格快照 |
 | `backend/internal/server/credits.go`、`credits_test.go` | 余额／流水／报价接口，独立测试库 HTTP 零余额与用户隔离验证 |
 | `frontend/src/api/credits.ts`、`components/NodePromptPanel.vue` | 读取余额、请求报价、生成前展示本次积分与不足提示 |
 | `docs/authentication.md` | 邮箱自动注册／登录、Session、CSRF、所有权、旧数据重置与验收 |
-| `backend/internal/identity/`、`persistence/auth.go`、`migrations/004_auth.sql` | 密码与随机凭证、用户／会话事务、唯一性、归属查询 |
+| `backend/internal/identity/`、`persistence/auth.go`、`migrations/004_auth.sql` | 密码与随机凭证、用户／会话／赠分事务、邮箱唯一性、归属查询 |
 | `backend/internal/server/auth.go`、`auth_test.go` | 会话中间件、来源／CSRF／限流、完整路由与数据库权限测试 |
 | `frontend/src/auth/session.ts`、`views/LoginPage.vue`、`components/AccountControl.vue` | 登录状态、统一请求、自动注册入口、退出与跨标签页失效 |
 | `frontend/tests/auth.spec.ts`、`scripts/verify-live-auth.mjs` | 模拟会话交互回归与真实隔离数据库端到端验收 |
+| `backend/cmd/grant-test-credits/` | 仅用于单个旧账号的幂等手动补发预览／执行；已获注册赠分账号被拒绝 |
 | `backend/cmd/reset-canvases/` | 显式旧画布清理工具，默认只读且拒绝重置已有用户数据 |
 | `AGENTS.md` | AI 协作与工程解释约定 |
 | `frontend/src/components/VideoGenerationControls.vue`、`frontend/tests/video-controls.spec.ts` | 四款视频模型、文生视频／全能参考、参数弹层与交互回归 |

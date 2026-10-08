@@ -65,7 +65,7 @@ test('访客首页可访问，登录后查看画布，退出后回到公开首�
   await expect(page.getByRole('button', { name: '查看积分余额和流水' })).toHaveCount(0)
   await page.getByRole('button', { name: '登录 / 注册' }).click()
   await expect(page.getByRole('heading', { name: '进入你的工作空间' })).toBeVisible()
-  await expect(page.getByText('未注册的邮箱将自动创建账号。')).toBeVisible()
+  await expect(page.getByText('未注册的邮箱将自动创建账号，并获赠 200 测试积分。')).toBeVisible()
   await expect(page.getByRole('button', { name: /忘记密码/ })).toHaveCount(0)
   await fillLogin(page)
   await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()

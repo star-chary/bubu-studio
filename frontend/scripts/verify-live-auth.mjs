@@ -1,25 +1,37 @@
-// Real Chrome -> Vite -> Gin -> PostgreSQL acceptance. Uses a disposable schema
-// in frame_space_test; cloud storage and model credentials are explicitly disabled.
+// Real Chrome -> Vite -> Gin -> PostgreSQL acceptance. Requires an explicit test
+// database and a freshly compiled backend; uses a disposable schema in frame_space_test.
+// Cloud storage and model credentials are explicitly disabled.
 import assert from 'node:assert/strict'
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { createServer } from 'node:net'
 import { chromium } from '@playwright/test'
 
 const frontend = fileURLToPath(new URL('..', import.meta.url))
 const backend = resolve(frontend, '../backend')
 const artifacts = resolve(frontend, 'artifacts')
-await mkdir(artifacts, { recursive: true })
-const envText = await readFile(resolve(backend, '.env.local'), 'utf8')
-const databaseLine = envText.split(/\r?\n/).find(line => line.startsWith('DATABASE_URL='))
-assert(databaseLine, 'DATABASE_URL required')
-const database = new URL(databaseLine.slice('DATABASE_URL='.length).trim())
+assert(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL must explicitly point to the local frame_space_test database')
+assert(process.env.AUTH_TEST_BACKEND_BIN, 'AUTH_TEST_BACKEND_BIN must point to a freshly compiled backend executable')
+const database = new URL(process.env.TEST_DATABASE_URL)
+assert(['postgres:', 'postgresql:'].includes(database.protocol), 'TEST_DATABASE_URL must be a PostgreSQL URL')
 assert.equal(database.hostname, '127.0.0.1', 'acceptance only uses local PostgreSQL')
-assert(['/frame_space', '/frame_space_test'].includes(database.pathname))
-database.pathname = '/frame_space_test'
+assert.equal(database.pathname, '/frame_space_test', 'acceptance only uses frame_space_test')
+const backendBinary = resolve(backend, process.env.AUTH_TEST_BACKEND_BIN)
+assert((await stat(backendBinary)).isFile(), 'AUTH_TEST_BACKEND_BIN must be a file')
+await mkdir(artifacts, { recursive: true })
 const schema = `test_live_auth_${Date.now()}`
+database.search = ''
 database.searchParams.set('search_path', schema)
+async function assertPortFree(port) {
+  await new Promise((resolvePort, rejectPort) => {
+    const server = createServer()
+    server.once('error', rejectPort)
+    server.listen(port, '127.0.0.1', () => server.close(resolvePort))
+  })
+}
+await Promise.all([assertPortFree(8081), assertPortFree(5175)])
 function sql(statement) {
   const result = spawnSync('wsl.exe', ['-d', 'Ubuntu-24.04', '-u', 'postgres', '--exec', 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-d', 'frame_space_test', '-c', statement], { encoding: 'utf8', windowsHide: true })
   assert.equal(result.status, 0, 'isolated test schema operation failed')
@@ -43,7 +55,7 @@ async function ready(url) {
 }
 let browser
 try {
-  launch(resolve(backend, 'bin/server.exe'), [], backend, { DATABASE_URL: database.toString(), PORT: '8081', APP_ORIGINS: 'http://127.0.0.1:5175', AUTH_COOKIE_SECURE: 'false', OSS_ENABLED: 'false', ARK_API_KEY: '' })
+  launch(backendBinary, [], backend, { DATABASE_URL: database.toString(), PORT: '8081', APP_ORIGINS: 'http://127.0.0.1:5175', AUTH_COOKIE_SECURE: 'false', OSS_ENABLED: 'false', ARK_API_KEY: '' })
   launch(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5175', '--strictPort'], frontend, { API_PROXY_TARGET: 'http://127.0.0.1:8081' })
   await Promise.all([ready('http://127.0.0.1:8081/health'), ready('http://127.0.0.1:5175')])
   browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -52,8 +64,28 @@ try {
   const page = await a.newPage()
   const failures = []
   page.on('pageerror', e => failures.push(e.message))
+  async function openLogin(page) {
+    await page.getByRole('button', { name: '登录 / 注册' }).click()
+    await page.getByRole('heading', { name: '进入你的工作空间' }).waitFor()
+  }
+  async function assertStarterCredits(context, page) {
+    await page.getByRole('button', { name: '查看积分余额和流水' }).getByText('积分 200', { exact: true }).waitFor()
+    const balanceResponse = await context.request.get('http://127.0.0.1:5175/api/credits')
+    assert.equal(balanceResponse.status(), 200)
+    assert.deepEqual(await balanceResponse.json(), { available: 200, reserved: 0 })
+    const ledgerResponse = await context.request.get('http://127.0.0.1:5175/api/credits/ledger?limit=20&offset=0')
+    assert.equal(ledgerResponse.status(), 200)
+    const ledger = await ledgerResponse.json()
+    assert.equal(ledger.hasMore, false)
+    assert.equal(ledger.entries.length, 1, 'starter credits must have exactly one ledger entry')
+    assert.equal(ledger.entries[0].operation, 'grant')
+    assert.equal(ledger.entries[0].availableDelta, 200)
+    assert.equal(ledger.entries[0].reservedDelta, 0)
+    assert.equal(ledger.entries[0].availableAfter, 200)
+    assert.equal(ledger.entries[0].reservedAfter, 0)
+  }
   await page.goto('http://127.0.0.1:5175')
-  await page.getByRole('heading', { name: '进入你的工作空间' }).waitFor()
+  await openLogin(page)
   await page.screenshot({ path: resolve(artifacts, 'auth-login-desktop.png'), fullPage: true })
   const emailA = 'acceptance-a@custom.example'
   const emailB = 'acceptance-b@different.example'
@@ -65,6 +97,7 @@ try {
     await page.getByRole('heading', { name: '我的画布' }).waitFor()
   }
   await login(page, emailA)
+  await assertStarterCredits(a, page)
   const cookie = (await a.cookies()).find(c => c.name === 'frame_session')
   assert(cookie?.httpOnly && cookie.sameSite === 'Lax')
   assert.equal(await page.evaluate(() => document.cookie.includes('frame_session')), false)
@@ -92,27 +125,30 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'auth-canvas-desktop.png'), fullPage: true })
   const pageB = await b.newPage()
   await pageB.goto('http://127.0.0.1:5175')
-  await pageB.getByRole('heading', { name: '进入你的工作空间' }).waitFor()
+  await openLogin(pageB)
   await pageB.screenshot({ path: resolve(artifacts, 'auth-login-mobile.png'), fullPage: true })
   await login(pageB, emailB)
+  await assertStarterCredits(b, pageB)
   const listB = await (await b.request.get('http://127.0.0.1:5175/api/canvases')).json()
   assert.equal(listB.canvases.length, 0)
   assert.equal((await b.request.get(`http://127.0.0.1:5175/api/canvases/${canvasID}`)).status(), 404)
   await pageB.goto(canvasURL)
   await pageB.getByText('画布、节点或任务不存在，请先保存画布。', { exact: true }).waitFor()
   await page.getByRole('button', { name: '退出登录', exact: true }).click()
-  await page.getByRole('heading', { name: '进入你的工作空间' }).waitFor()
+  await page.getByRole('button', { name: '登录 / 注册' }).waitFor()
   const revoked = await fetch('http://127.0.0.1:8081/api/auth/me', { headers: { Cookie: `${cookie.name}=${cookie.value}` } })
   assert.equal(revoked.status, 401)
+  await openLogin(page)
   await page.getByLabel('邮箱', { exact: true }).fill(emailA)
   await page.getByLabel('密码', { exact: true }).fill('incorrect password')
   await page.getByRole('button', { name: '继续', exact: true }).click()
   await page.getByRole('alert').filter({ hasText: '邮箱或密码不正确' }).waitFor()
   await login(page, emailA)
+  await assertStarterCredits(a, page)
   await page.getByRole('link', { name: /打开画布：账号隔离验收/ }).waitFor()
   assert.equal((await (await a.request.get('http://127.0.0.1:5175/api/auth/me')).json()).user.id, me.user.id)
   assert.deepEqual(failures, [])
-  const report = { passed: true, checkedAt: new Date().toISOString(), checks: ['email auto-registration', 'existing-account password validation', 'HttpOnly cookie', 'refresh session restoration', 'canvas save and reload', 'two-account isolation', 'logout server revocation', 'same account relogin'], realPostgres: true, modelCalls: 0, storageCalls: 0, isolatedSchema: schema }
+  const report = { passed: true, checkedAt: new Date().toISOString(), checks: ['email auto-registration', 'new A/B accounts each receive 200 credits and one grant entry', 'existing-account relogin does not duplicate starter credits', 'existing-account password validation', 'HttpOnly cookie', 'refresh session restoration', 'canvas save and reload', 'two-account isolation', 'logout server revocation', 'same account relogin'], realPostgres: true, modelCalls: 0, storageCalls: 0, isolatedSchema: schema }
   await writeFile(resolve(artifacts, 'auth-live.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report))
 } finally {
