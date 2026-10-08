@@ -40,6 +40,7 @@ func NewRouter(generator imageGenerator, store AssetStore, databases ...*persist
 	registerAssets(router, store, db)
 	registerPersistence(router, db)
 	registerCredits(router, db)
+	registerAdmin(router, db)
 
 	return router
 }

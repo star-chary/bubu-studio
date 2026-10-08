@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-08 BuBu-后台管理：根目录 `admin/` 与 `frontend/`、`backend/` 并列。已实现管理员登录、用户查询／分页、测试积分发放与审计流水；新增角色／审计字段迁移 007 和服务器端初始化工具。Go／PostgreSQL、vet、前后端构建、管理端 6/6 与画布登录／积分 18/18 浏览器回归通过，真实隔离数据库链路验证重复提交仅发一次、画布读取新余额。已随 `20261008T055817Z` 发布到正式站点 `/admin/`，完成数据库备份、迁移和线上管理员初始化；正式 HTTPS 的真实浏览器已验证登录、用户查询、发放防重、审计、画布余额与权限，临时账号及测试积分已清理。未调用 Ark／OSS。见 [管理端说明](./docs/admin.md)。
+
 2026-10-08 注册赠分更新：新账号创建时，在用户与首个 Session 的同一 PostgreSQL 事务中写入 200 测试积分账户和唯一 `grant` 流水；已有账号登录不重复赠送，旧账号不自动补发，充值仍未开放。未新增表或迁移。独立 PostgreSQL 的 Go 全包测试、vet、前端构建及 18/18 项登录／积分浏览器回归通过；真实 Chrome → Vite → Gin → 隔离 schema 验证两个新账号各得 200 分且重登不重复，未调用方舟或 OSS。发布 `20261008T042639Z` 已生成备份并完成正式 HTTPS 注册赠分验收：新账号 200 分及一条流水，Chrome 重登不重复，临时账号已精确清理；未调用生成模型。邮箱未验证，用户选择暂不设置每日新账号总量上限，当前也没有平台预算熔断；换邮箱或 IP 批量领取积分的风险仍存在。详见 [登录与鉴权](./docs/authentication.md) 和 [测试积分](./docs/test-credits.md)。
 
 2026-10-07 部署验证记录：正式 HTTPS 登录／会话、画布保存、CSRF、PNG 上传／读取／Range、匿名拒绝及退出失效已通过接口验收；密码 6～20 字符边界经过真实接口与浏览器验证。本轮未调用付费模型。公开仓库提供 [部署指南](./docs/deployment.md) 和示例配置，具体服务器资料及发布记录保留在本地。
@@ -30,6 +32,9 @@
 
 | 位置 | 职责 / 状态 |
 | --- | --- |
+| `admin/`、`docs/admin.md` | BuBu-后台管理独立前端、接口／数据模型、初始化、运行与本地验收边界 |
+| `backend/internal/server/admin.go`、`persistence/admin.go` | 管理员权限、用户搜索与分页、带审计的事务发放和请求幂等 |
+| `backend/internal/persistence/migrations/007_admin.sql`、`backend/cmd/set-admin/` | 用户角色、账本审计字段；按明确用户 ID 初始化管理员并撤销旧会话 |
 | `docs/deployment.md` | 通用部署目录、配置模板、服务与数据流、发布检查和证书维护 |
 | `docs/development-notes.md` | 原 README 中的开发过程、交互细节和分阶段验证记录 |
 | `deploy/nginx/studio.example.conf`、`frame-space-proxy.conf`、`frame-space-upload-size.conf` | 脱敏后的独立站点示例、同机反向代理和上传 200 MiB 配置；请求头边界已验证，完整 200 MiB 上传尚未验收 |

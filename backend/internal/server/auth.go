@@ -23,7 +23,7 @@ type AuthConfig struct {
 func AuthConfigFromEnv() (AuthConfig, error) {
 	origins := os.Getenv("APP_ORIGINS")
 	if origins == "" {
-		origins = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174"
+		origins = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,http://127.0.0.1:5176,http://localhost:5176"
 	}
 	value := os.Getenv("AUTH_COOKIE_SECURE")
 	if value != "" && value != "true" && value != "false" {
@@ -85,7 +85,7 @@ func requireSession(db *persistence.Store, cfg AuthConfig) gin.HandlerFunc {
 			authFailure(c, 503, "AUTH_UNAVAILABLE", "登录服务尚未连接数据库，请启动后端和数据库后重试。")
 			return
 		}
-		if c.Request.Method == "POST" && c.Request.URL.Path == "/api/auth/login" {
+		if c.Request.Method == "POST" && (c.Request.URL.Path == "/api/auth/login" || c.Request.URL.Path == "/api/admin/auth/login") {
 			c.Next()
 			return
 		}
@@ -159,60 +159,69 @@ func (l *authLimiter) allow(key string, limit int) bool {
 func registerAuth(router *gin.Engine, db *persistence.Store, cfg AuthConfig) {
 	limiter := &authLimiter{entries: map[string]attemptBucket{}}
 	slots := make(chan struct{}, 4)
-	router.POST("/api/auth/login", func(c *gin.Context) {
-		if !cfg.originAllowed(c) || c.GetHeader("X-Requested-With") != "frame-space" {
-			authFailure(c, 403, "INVALID_ORIGIN", "登录请求来源无效，请从本站页面登录。")
-			return
+	loginHandler := func(adminOnly bool) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			if !cfg.originAllowed(c) || c.GetHeader("X-Requested-With") != "frame-space" {
+				authFailure(c, 403, "INVALID_ORIGIN", "登录请求来源无效，请从本站页面登录。")
+				return
+			}
+			if !limiter.allow("ip:"+c.ClientIP(), 40) {
+				c.Header("Retry-After", "900")
+				authFailure(c, 429, "LOGIN_RATE_LIMITED", "尝试过于频繁，请 15 分钟后再试。")
+				return
+			}
+			var body struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			}
+			if !decodeJSON(c, &body, 4096) {
+				return
+			}
+			email, err := identity.Email(body.Email)
+			if err != nil {
+				authFailure(c, 400, "INVALID_EMAIL", err.Error())
+				return
+			}
+			if err = identity.ValidatePassword(body.Password); err != nil {
+				authFailure(c, 400, "INVALID_PASSWORD", err.Error())
+				return
+			}
+			if !limiter.allow("email:"+identity.TokenHash(email), 12) {
+				c.Header("Retry-After", "900")
+				authFailure(c, 429, "LOGIN_RATE_LIMITED", "尝试过于频繁，请 15 分钟后再试。")
+				return
+			}
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			default:
+				authFailure(c, 429, "LOGIN_BUSY", "登录请求较多，请稍后再试。")
+				return
+			}
+			var session persistence.Session
+			if adminOnly {
+				session, err = db.LoginAdmin(c.Request.Context(), email, body.Password)
+			} else {
+				session, err = db.LoginOrCreate(c.Request.Context(), email, body.Password)
+			}
+			if errors.Is(err, persistence.ErrCredentials) {
+				authFailure(c, 401, "INVALID_CREDENTIALS", "邮箱或密码不正确，或账号不可用。")
+				return
+			}
+			if err != nil {
+				authFailure(c, 503, "AUTH_UNAVAILABLE", "登录服务暂时不可用，请稍后重试。")
+				return
+			}
+			// A login always issues a new credential, never adopts a supplied cookie.
+			if old, _ := c.Cookie(cfg.cookieName()); identity.ValidToken(old) {
+				_ = db.RevokeSession(c.Request.Context(), old)
+			}
+			cfg.cookie(c, session.Token, session.ExpiresAt)
+			c.JSON(200, session)
 		}
-		if !limiter.allow("ip:"+c.ClientIP(), 40) {
-			c.Header("Retry-After", "900")
-			authFailure(c, 429, "LOGIN_RATE_LIMITED", "尝试过于频繁，请 15 分钟后再试。")
-			return
-		}
-		var body struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-		}
-		if !decodeJSON(c, &body, 4096) {
-			return
-		}
-		email, err := identity.Email(body.Email)
-		if err != nil {
-			authFailure(c, 400, "INVALID_EMAIL", err.Error())
-			return
-		}
-		if err = identity.ValidatePassword(body.Password); err != nil {
-			authFailure(c, 400, "INVALID_PASSWORD", err.Error())
-			return
-		}
-		if !limiter.allow("email:"+identity.TokenHash(email), 12) {
-			c.Header("Retry-After", "900")
-			authFailure(c, 429, "LOGIN_RATE_LIMITED", "尝试过于频繁，请 15 分钟后再试。")
-			return
-		}
-		select {
-		case slots <- struct{}{}:
-			defer func() { <-slots }()
-		default:
-			authFailure(c, 429, "LOGIN_BUSY", "登录请求较多，请稍后再试。")
-			return
-		}
-		session, err := db.LoginOrCreate(c.Request.Context(), email, body.Password)
-		if errors.Is(err, persistence.ErrCredentials) {
-			authFailure(c, 401, "INVALID_CREDENTIALS", "邮箱或密码不正确，或账号不可用。")
-			return
-		}
-		if err != nil {
-			authFailure(c, 503, "AUTH_UNAVAILABLE", "登录服务暂时不可用，请稍后重试。")
-			return
-		}
-		// A login always issues a new credential, never adopts a supplied cookie.
-		if old, _ := c.Cookie(cfg.cookieName()); identity.ValidToken(old) {
-			_ = db.RevokeSession(c.Request.Context(), old)
-		}
-		cfg.cookie(c, session.Token, session.ExpiresAt)
-		c.JSON(200, session)
-	})
+	}
+	router.POST("/api/auth/login", loginHandler(false))
+	router.POST("/api/admin/auth/login", loginHandler(true))
 	router.GET("/api/auth/me", func(c *gin.Context) { session, _ := c.Get("session"); c.JSON(200, session) })
 	router.POST("/api/auth/logout", func(c *gin.Context) {
 		if err := db.RevokeSession(c.Request.Context(), c.GetString("sessionToken")); err != nil {

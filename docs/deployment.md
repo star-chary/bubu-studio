@@ -7,6 +7,7 @@
 ```text
 浏览器 → HTTPS / Nginx
              ├─ 静态页面 → frontend/dist
+             ├─ /admin/ 管理页面 → admin/dist
              └─ /api、/health → Go / Gin（127.0.0.1:8080）
                                       ├─ PostgreSQL：账号、画布、任务、积分
                                       ├─ 火山方舟：模型生成
@@ -32,7 +33,9 @@
 ```text
 /opt/frame-space/releases/<发布版本>/
   frontend/                    # 前端构建产物
+  admin/                       # 管理端构建产物，来自 admin/dist
   backend/frame-space          # Linux 后端程序
+  backend/set-admin            # 按已核对用户 ID 初始化管理员的工具
 /opt/frame-space/current        # 指向当前发布版本的链接
 /etc/frame-space/backend.env   # 仅服务器保存的真实环境变量
 /var/lib/frame-space/          # 运行目录及 .storage-tmp 暂存
@@ -45,11 +48,12 @@
 1. 安装 PostgreSQL 16、Nginx、ffprobe，创建独立的数据库角色和数据库。
 2. 创建 `frame-space` 系统用户及运行目录。按服务模板准备程序和配置路径，并保证该用户对工作目录可写。
 3. 将后端配置模板复制为 `/etc/frame-space/backend.env`，由 root 持有，权限限制为 `600`。填写数据库、Ark、OSS 凭据；生产站点配置 `APP_ORIGINS=https://studio.example.com`、`AUTH_COOKIE_SECURE=true`、`TRUSTED_PROXIES=127.0.0.1`，并设置独立的 `STORAGE_ENV=prod`。
-4. 在 `frontend/` 运行 `npm ci`、`npm run build`。构建期间只使用公开前端配置。
-5. 在 `backend/` 编译目标 Linux 架构的程序，例如 Linux amd64 构建环境中执行 `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/frame-space ./cmd/server`。跨平台时根据实际 shell 设置环境变量。
+4. 分别在 `frontend/`、`admin/` 运行 `npm ci`、`npm run build`。构建期间只使用公开前端配置。管理端使用 `/admin/` 资源基址；Nginx 模板从发布目录的 `admin/` 提供页面，管理接口仍由同一个 Go 服务处理。
+5. 在 `backend/` 编译目标 Linux 架构的程序，例如 Linux amd64 构建环境中执行 `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/frame-space ./cmd/server`；同样为 `./cmd/set-admin` 编译管理员初始化工具。跨平台时根据实际 shell 设置环境变量。
 6. 将产物上传到独立发布目录，核对文件摘要；原始 `.env.local`、数据库目录、私钥和日志不应打包。
 7. 按模板安装 systemd 单元与 Nginx 配置。证书链与私钥通过独立受保护渠道安装；私钥应由 root 持有并限制权限。
 8. 在检查通过后启用服务。修改 Nginx 配置先执行 `nginx -t`，修改 systemd 单元后执行 `systemctl daemon-reload`。
+9. 首次启用管理端时，应用迁移后核对现有线上账号的 UUID，在与正式服务相同的数据库环境中运行 `set-admin --user-id <UUID>` 预览，再加 `--apply` 授权。使用原密码重新登录 `/admin/`，本地管理员权限不会自动同步。
 
 后端启动时自动执行数据库迁移，因此首次启动及升级前需要确认连接的数据库和备份策略。生成任务依赖数据库级执行器锁，当前架构不能通过启动第二个同库后端来实现无缝接管。
 
@@ -60,7 +64,7 @@ Nginx 覆写 `X-Forwarded-For`，后端只信任同机代理。不要将受信�
 1. 完成修改相关测试、前端构建和后端目标平台编译。
 2. 记录当前版本、检查活动生成任务、备份 PostgreSQL，并核对备份可用性。
 3. 准备新版本目录；停止旧 Go 服务后切换 `current`，再启动服务。
-4. 检查日志、健康接口，以及此次修改相关的登录、画布、素材等业务链路。
+4. 检查日志、健康接口，以及此次修改相关的登录、画布、素材等业务链路。Nginx reload 是异步生效的，应有界重试并核对实际返回的管理端 HTML／资源，不能把 reload 命令返回成功或任意 200 页面当作新路由已生效。
 5. 故障时先停止新服务，确认旧程序兼容已执行的数据库迁移，再切回旧版本。
 
 回退程序不会撤销数据库迁移。涉及数据结构时，应独立设计兼容和数据恢复步骤。已有后台任务的恢复取决于状态：已保存供应商任务 ID 的视频可以继续查询，不确定的提交阶段需要核查，避免重复付费。
@@ -68,6 +72,10 @@ Nginx 覆写 `X-Forwarded-For`，后端只信任同机代理。不要将受信�
 推送代码到 GitHub 与发布到服务器是两项操作；本仓库没有配置 GitHub Actions 自动部署。
 
 ## 验收与维护
+
+2026-10-08 BuBu-后台管理发布 `20261008T055817Z`：已发布管理端静态产物、后端及 Nginx `/admin/` 路由，沿用原域名和证书。发布前活动任务为 0，PostgreSQL 备份通过目录读取和完整 SQL 导出检查；这不等于数据库恢复演练。迁移 007 已应用，指定现有账号已按核对的线上 UUID 授权，原密码不变，旧会话撤销。
+
+首次访问检查遇到 Nginx reload 尚未切换工作进程、返回旧画布页面，发布脚本自动回退旧程序和配置；保留兼容的新增字段迁移。随后改为等待实际管理页面内容匹配后重新启用，正式入口、管理端 JS／CSS、画布及同机原站均返回 200。真实 Chrome 验收通过管理登录、用户查询、积分发放／重试防重／审计、画布余额读取、权限与 CSRF、刷新恢复和退出；临时账号及测试记录已精确清理，既有余额不变，未调用模型或 OSS。见 [管理端说明](./admin.md)。
 
 2026-10-08 注册赠分发布 `20261008T042639Z`：发布前确认活动生成任务为 0，生成并验证数据库备份；正式 HTTPS 注册获赠 200 测试积分及一条赠送流水，Chrome 重新登录不重复赠送。临时验收账号已精确清理；本次未调用付费模型。
 

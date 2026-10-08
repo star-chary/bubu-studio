@@ -12,6 +12,7 @@ playwright-report/
 backend/bin/
 backend/.storage-tmp/
 frontend/artifacts/
+admin/artifacts/
 .data/
 
 # 私钥、证书包、云服务凭据及本机配置

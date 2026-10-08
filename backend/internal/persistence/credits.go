@@ -53,8 +53,8 @@ func grantSignupCredits(ctx context.Context, tx pgx.Tx, userID string) error {
 		RETURNING available,reserved`, userID, SignupTestCredits).Scan(&account.Available, &account.Reserved); err != nil {
 		return mapError(err)
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key)
-		VALUES($1,'grant',$2,0,$3,$4,$5)`, userID, SignupTestCredits, account.Available, account.Reserved, signupCreditKeyPrefix+userID)
+	_, err := tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key,source)
+		VALUES($1,'grant',$2,0,$3,$4,$5,'signup')`, userID, SignupTestCredits, account.Available, account.Reserved, signupCreditKeyPrefix+userID)
 	return mapError(err)
 }
 
@@ -122,8 +122,8 @@ func (s *Store) GrantCredits(ctx context.Context, userID string, points int64, k
 	if err != nil {
 		return mapError(err)
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key)
-		VALUES($1,'grant',$2,0,$3,$4,$5)`, userID, points, account.Available, account.Reserved, key); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key,source)
+		VALUES($1,'grant',$2,0,$3,$4,$5,'legacy')`, userID, points, account.Available, account.Reserved, key); err != nil {
 		return mapError(err)
 	}
 	return tx.Commit(ctx)

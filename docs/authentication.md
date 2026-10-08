@@ -1,5 +1,7 @@
 # 邮箱密码登录与私有画布
 
+2026-10-08 管理端扩展（已随 `20261008T055817Z` 发布线上）：增加 BuBu-后台管理的独立 `admin/` 前端、仅管理员可用的登录入口和 `users.role`。继续使用下述服务端 Session，不引入 JWT；普通账号不能访问管理接口，管理员对画布仍遵守原有所有权限制。初始化会撤销被授权账号的旧会话。正式 HTTPS 已验证管理员登录、Cookie、CSRF、普通用户拒绝与退出撤销。详见 [管理端说明](./admin.md)。
+
 更新：2026-10-08。已实现统一邮箱密码入口：有效会话直接进入工作空间；已有邮箱校验密码后登录；新邮箱自动注册、获赠一次 200 测试积分并登录。已有账号登录不重复获赠，旧账号不自动补发。没有单独注册页、找回密码、修改密码、邮箱验证、团队或协作权限；没有付费充值。
 
 ## 用户流程与范围
@@ -30,7 +32,7 @@
 
 | 接口 | 契约 |
 | --- | --- |
-| `POST /api/auth/login` | JSON `{email,password}`；新建或登录都返回 200 `{user:{id,email},csrfToken,expiresAt}`，并设置 Cookie |
+| `POST /api/auth/login` | JSON `{email,password}`；新建或登录都返回 200 `{user:{id,email,role},csrfToken,expiresAt}`，并设置 Cookie；role 字段随管理端扩展加入 |
 | `GET /api/auth/me` | 返回当前用户、会话 CSRF Token 和绝对到期时间；无有效会话返回 401 |
 | `POST /api/auth/logout` | 撤销当前会话，清除 Cookie，返回 204；其他设备的独立会话不受影响 |
 
@@ -44,7 +46,7 @@ Cookie 为 host-only、Path=/、HttpOnly、SameSite=Lax。正式 HTTPS 使用 Se
 
 ## 数据模型与权限
 
-账号阶段新增 `users`、`user_sessions`，`canvases` 新增非空 `owner_user_id` 外键和用户/更新时间索引。用户表邮箱有唯一约束。用户状态为 active/disabled；当前没有管理页面。2026-10-06 测试积分迁移另增加 `credit_accounts` 和 `credit_ledger`，通过用户外键隔离余额及流水；2026-10-08 注册赠分复用这两张表，没有新增迁移，也不改变画布归属模型。旧账号没有注册赠分流水，登录不会自动补写。
+账号阶段新增 `users`、`user_sessions`，`canvases` 新增非空 `owner_user_id` 外键和用户/更新时间索引。用户表邮箱有唯一约束。用户状态为 active/disabled；管理端可查看状态，目前没有禁用／启用操作页面。2026-10-06 测试积分迁移另增加 `credit_accounts` 和 `credit_ledger`，通过用户外键隔离余额及流水；2026-10-08 注册赠分复用这两张表。随后管理端的 007 迁移增加用户角色和流水审计字段，不改变画布归属模型。旧账号没有注册赠分流水，登录不会自动补写。
 
 ```text
 users
@@ -76,11 +78,11 @@ Gin 中间件从服务端会话取得 userId；Handler 检查画布、任务或�
 `backend/.env.local` 保持已有数据库/OSS/模型配置。新增可选配置见 `.env.example`：
 
 ```dotenv
-APP_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+APP_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5176,http://localhost:5176
 AUTH_COOKIE_SECURE=false
 ```
 
-APP_ORIGINS 是浏览器访问的来源，不能用代理后的 8080 地址替代。省略时允许本机 5173/5174；正式站点需明确 HTTPS 来源并启用 Secure。后端仍仅监听 127.0.0.1，不是公网部署验收。
+APP_ORIGINS 是浏览器访问的来源，不能用代理后的 8080 地址替代。省略时允许本机 5173/5174/5176；正式站点需明确 HTTPS 来源并启用 Secure。后端仍仅监听 127.0.0.1，不是公网部署验收。
 
 数据库启动仍使用根目录 `scripts/start-postgres-wsl.ps1`，然后在 backend 运行 `go run ./cmd/server`，frontend 运行 `npm run dev`。浏览器入口为 `http://127.0.0.1:5173`。
 

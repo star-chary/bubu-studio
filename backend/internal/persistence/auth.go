@@ -15,6 +15,7 @@ var ErrSession = errors.New("invalid session")
 type User struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 type Session struct {
 	User      User      `json:"user"`
@@ -26,13 +27,25 @@ type Session struct {
 // LoginOrCreate never replaces an existing password. A unique email constraint
 // arbitrates concurrent registrations; the losing request verifies the winner.
 func (s *Store) LoginOrCreate(ctx context.Context, email, password string) (Session, error) {
+	return s.login(ctx, email, password, false)
+}
+
+// LoginAdmin never registers an account or grants a role.
+func (s *Store) LoginAdmin(ctx context.Context, email, password string) (Session, error) {
+	return s.login(ctx, email, password, true)
+}
+
+func (s *Store) login(ctx context.Context, email, password string, adminOnly bool) (Session, error) {
 	var user User
 	var hash, status string
-	err := s.Pool.QueryRow(ctx, `SELECT id::text,email,password_hash,status FROM users WHERE email=$1`, email).Scan(&user.ID, &user.Email, &hash, &status)
+	err := s.Pool.QueryRow(ctx, `SELECT id::text,email,password_hash,status,role FROM users WHERE email=$1`, email).Scan(&user.ID, &user.Email, &hash, &status, &user.Role)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, err
 	}
 	newUser := errors.Is(err, pgx.ErrNoRows)
+	if adminOnly && (newUser || user.Role != "admin") {
+		return Session{}, ErrCredentials
+	}
 	if !newUser && (!identity.PasswordMatches(password, hash) || status != "active") {
 		return Session{}, ErrCredentials
 	}
@@ -45,13 +58,13 @@ func (s *Store) LoginOrCreate(ctx context.Context, email, password string) (Sess
 	}
 	defer tx.Rollback(context.Background())
 	if newUser {
-		user = User{ID: identity.ID(), Email: email}
+		user = User{ID: identity.ID(), Email: email, Role: "user"}
 		tag, err := tx.Exec(ctx, `INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3) ON CONFLICT(email) DO NOTHING`, user.ID, email, hash)
 		if err != nil {
 			return Session{}, err
 		}
 		if tag.RowsAffected() == 0 {
-			if err := tx.QueryRow(ctx, `SELECT id::text,email,password_hash,status FROM users WHERE email=$1 FOR SHARE`, email).Scan(&user.ID, &user.Email, &hash, &status); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT id::text,email,password_hash,status,role FROM users WHERE email=$1 FOR SHARE`, email).Scan(&user.ID, &user.Email, &hash, &status, &user.Role); err != nil {
 				return Session{}, err
 			}
 			if !identity.PasswordMatches(password, hash) || status != "active" {
@@ -64,10 +77,10 @@ func (s *Store) LoginOrCreate(ctx context.Context, email, password string) (Sess
 	} else {
 		// Serialize disabling/password changes with session creation.
 		var currentHash string
-		if err := tx.QueryRow(ctx, `SELECT password_hash,status FROM users WHERE id=$1 FOR SHARE`, user.ID).Scan(&currentHash, &status); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT password_hash,status,role FROM users WHERE id=$1 FOR SHARE`, user.ID).Scan(&currentHash, &status, &user.Role); err != nil {
 			return Session{}, err
 		}
-		if status != "active" || currentHash != hash {
+		if status != "active" || currentHash != hash || (adminOnly && user.Role != "admin") {
 			return Session{}, ErrCredentials
 		}
 	}
@@ -88,7 +101,7 @@ func (s *Store) Session(ctx context.Context, token string, touch bool) (Session,
 		return Session{}, ErrSession
 	}
 	var out Session
-	err := s.Pool.QueryRow(ctx, `SELECT u.id::text,u.email,s.csrf_token,s.absolute_expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>now() AND s.absolute_expires_at>now() AND u.status='active'`, identity.TokenHash(token)).Scan(&out.User.ID, &out.User.Email, &out.CSRFToken, &out.ExpiresAt)
+	err := s.Pool.QueryRow(ctx, `SELECT u.id::text,u.email,u.role,s.csrf_token,s.absolute_expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>now() AND s.absolute_expires_at>now() AND u.status='active'`, identity.TokenHash(token)).Scan(&out.User.ID, &out.User.Email, &out.User.Role, &out.CSRFToken, &out.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrSession
 	}
