@@ -42,7 +42,7 @@ func TestGenerateRequestContract(t *testing.T) {
 			defer upstream.Close()
 			client := NewClient("test-secret")
 			client.endpoint = upstream.URL
-			result, err := client.Generate(context.Background(), "黑洞中的复古列车", model)
+			result, err := client.Generate(context.Background(), "黑洞中的复古列车", model, nil)
 			if err != nil || result.URL != "https://images.example.test/result.png" || result.Model != model || result.Size != "2048x2048" || calls.Load() != 1 {
 				t.Fatalf("生成结果不符：%+v, %v", result, err)
 			}
@@ -77,7 +77,7 @@ func TestReferencesForwardedInOrderWithSingleImageOutput(t *testing.T) {
 			}))
 			client := NewClient("test-secret")
 			client.endpoint = upstream.URL
-			_, err := client.Generate(context.Background(), "change the sky", model, images...)
+			_, err := client.Generate(context.Background(), "change the sky", model, nil, images...)
 			upstream.Close()
 			if err != nil {
 				t.Fatal(err)
@@ -93,7 +93,7 @@ func TestRejectUnexpectedMultipleOutputs(t *testing.T) {
 	defer upstream.Close()
 	client := NewClient("test-secret")
 	client.endpoint = upstream.URL
-	_, err := client.Generate(context.Background(), "one image", DefaultImageModel)
+	_, err := client.Generate(context.Background(), "one image", DefaultImageModel, nil)
 	var failure *APIError
 	if !errors.As(err, &failure) || failure.Code != "INVALID_MODEL_RESULT" {
 		t.Fatal("single-image mode must not silently discard extra provider outputs")
@@ -115,7 +115,7 @@ func TestProviderErrorsAreSanitized(t *testing.T) {
 			defer upstream.Close()
 			client := NewClient("test-secret")
 			client.endpoint = upstream.URL
-			_, err := client.Generate(context.Background(), "test", DefaultImageModel)
+			_, err := client.Generate(context.Background(), "test", DefaultImageModel, nil)
 			var failure *APIError
 			if !errors.As(err, &failure) || failure.Code != tc.code || strings.Contains(err.Error(), "test-secret") || strings.Contains(err.Error(), "provider-internal") || calls.Load() != 1 {
 				t.Fatalf("错误映射或脱敏不符：%v", err)
@@ -129,14 +129,14 @@ func TestRejectInvalidResultsAndMissingKey(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
 		client := NewClient("test-secret")
 		client.endpoint = upstream.URL
-		_, err := client.Generate(context.Background(), "test", DefaultImageModel)
+		_, err := client.Generate(context.Background(), "test", DefaultImageModel, nil)
 		upstream.Close()
 		var failure *APIError
 		if !errors.As(err, &failure) || failure.Code != "INVALID_MODEL_RESULT" {
 			t.Fatalf("应拒绝无效结果：%v", err)
 		}
 	}
-	_, err := NewClient("").Generate(context.Background(), "test", DefaultImageModel)
+	_, err := NewClient("").Generate(context.Background(), "test", DefaultImageModel, nil)
 	var failure *APIError
 	if !errors.As(err, &failure) || failure.Status != 503 {
 		t.Fatalf("缺少密钥时应明确报错：%v", err)
@@ -157,7 +157,7 @@ func TestTimeoutDoesNotRetry(t *testing.T) {
 	client := NewClient("test-secret")
 	client.endpoint = upstream.URL
 	client.http.Timeout = 100 * time.Millisecond
-	_, err := client.Generate(context.Background(), "test", DefaultImageModel)
+	_, err := client.Generate(context.Background(), "test", DefaultImageModel, nil)
 	var failure *APIError
 	if !errors.As(err, &failure) || failure.Status != 504 || calls.Load() > 1 {
 		t.Fatalf("应超时且不重试：%v", err)
@@ -174,7 +174,7 @@ func TestDoesNotFollowRedirect(t *testing.T) {
 	defer upstream.Close()
 	client := NewClient("test-secret")
 	client.endpoint = upstream.URL
-	_, err := client.Generate(context.Background(), "test", DefaultImageModel)
+	_, err := client.Generate(context.Background(), "test", DefaultImageModel, nil)
 	if err == nil || redirectedCalls.Load() != 0 {
 		t.Fatal("不能向重定向地址转发鉴权请求")
 	}

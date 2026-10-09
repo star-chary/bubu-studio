@@ -46,8 +46,12 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
-func (c *Client) Generate(ctx context.Context, prompt, model string, images ...string) (ImageResult, error) {
+func (c *Client) Generate(ctx context.Context, prompt, model string, options *ImageOptions, images ...string) (ImageResult, error) {
 	model, err := ResolveImageModel(model)
+	if err != nil {
+		return ImageResult{}, err
+	}
+	size, err := ImageSize(model, options)
 	if err != nil {
 		return ImageResult{}, err
 	}
@@ -67,7 +71,7 @@ func (c *Client) Generate(ctx context.Context, prompt, model string, images ...s
 		Stream     *bool    `json:"stream,omitempty"`
 		Watermark  bool     `json:"watermark"`
 		Images     []string `json:"image,omitempty"`
-	}{Model: model, Prompt: prompt, Format: "url", Size: "2K", Watermark: true, Images: images}
+	}{Model: model, Prompt: prompt, Format: "url", Size: size, Watermark: true, Images: images}
 	if model == DefaultImageModel {
 		stream := false
 		input.Sequential = "disabled"

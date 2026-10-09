@@ -13,7 +13,7 @@ import TaskHistory from '../components/TaskHistory.vue'
 import { useMediaNodes } from '../canvas/useMediaNodes'
 import { useNodeReferences } from '../canvas/useNodeReferences'
 import type { MediaKind } from '../canvas/media'
-import { DEFAULT_IMAGE_MODEL } from '../models/imageModels'
+import { DEFAULT_IMAGE_MODEL, normalizeImageOptions } from '../models/imageModels'
 import { INITIAL_VIEWPORT, MAX_ZOOM, MIN_ZOOM } from '../canvas/viewport'
 import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../api/credits'
 
@@ -21,7 +21,7 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
 const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate } = useVueFlow(flowId)
-const { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const leaving = ref(false)
@@ -70,9 +70,11 @@ const quoteRequest = computed(() => {
   const input = generationInputFor(node.id)
   if (!input) return null
   const kind = node.data.kind
-  return { kind, input, key: JSON.stringify({ kind, ...input }) }
+  const count = kind === 'image' ? normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions).count : 1
+  return { kind, input, count, key: JSON.stringify({ kind, ...input, count }) }
 })
 const creditQuote = ref<CreditQuote | null>(null)
+const totalCreditQuote = computed(() => creditQuote.value ? { ...creditQuote.value, points: creditQuote.value.points * (quoteRequest.value?.count ?? 1) } : null)
 const quoteStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
 const quoteError = ref('')
 let quotedKey = ''
@@ -116,8 +118,8 @@ async function generateActiveNode() {
   const node = activePromptNode.value
   const request = quoteRequest.value
   const quote = creditQuote.value
-  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points) return
-  await generateNode(node.id, { input: request.input, quote })
+  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
+  await generateNode(node.id, { input: request.input, quote, count: request.count })
   await refreshCredits()
   if (quoteRequest.value?.key === request.key) refreshQuote()
 }
@@ -321,6 +323,7 @@ function resetViewport() {
       :video-model="activePromptNode.data.videoModel"
       :video-mode="activePromptNode.data.videoMode"
       :image-model="activePromptNode.data.imageModel ?? DEFAULT_IMAGE_MODEL"
+      :image-options="activePromptNode.data.imageOptions"
       :references="activeReferences"
       :selecting-references="isSelecting"
       :can-generate="activePromptNode.data.origin !== 'upload'"
@@ -332,7 +335,7 @@ function resetViewport() {
       :credits-reserved="credits.reserved"
       :credits-status="credits.status"
       :credits-error="credits.error"
-      :credit-quote="creditQuote"
+      :credit-quote="totalCreditQuote"
       :quote-status="quoteStatus"
       :quote-error="quoteError"
       @update:prompt-parts="updatePrompt(activePromptNode.id, $event)"
@@ -340,6 +343,7 @@ function resetViewport() {
       @update:video-model="updateVideoModel(activePromptNode.id, $event)"
       @update:video-mode="updateVideoMode(activePromptNode.id, $event)"
       @update:image-model="updateImageModel(activePromptNode.id, $event)"
+      @update:image-options="updateImageOptions(activePromptNode.id, $event)"
       @select-references="selectReferences"
       @remove-reference="removeReference(activePromptNode.id, $event)"
       @generate="generateActiveNode"

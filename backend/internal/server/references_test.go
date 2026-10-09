@@ -12,7 +12,7 @@ import (
 
 type referenceGenerator func(context.Context, string, string, []string) (ark.ImageResult, error)
 
-func (f referenceGenerator) Generate(ctx context.Context, prompt, model string, images ...string) (ark.ImageResult, error) {
+func (f referenceGenerator) Generate(ctx context.Context, prompt, model string, _ *ark.ImageOptions, images ...string) (ark.ImageResult, error) {
 	return f(ctx, prompt, model, images)
 }
 

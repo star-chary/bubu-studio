@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"frame-space/backend/internal/ark"
 	"frame-space/backend/internal/storage"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -223,6 +224,11 @@ func (s *Store) CreateVideoTask(ctx context.Context, id string, input Input) (Ta
 	return s.createTask(ctx, id, input, "video")
 }
 func (s *Store) createTask(ctx context.Context, id string, input Input, kind string) (Task, error) {
+	if kind == "image" {
+		if _, err := ark.ResolveImageOptions(input.Model, input.ImageOptions); err != nil {
+			return Task{}, ErrInvalid
+		}
+	}
 	if kind == "video" && NormalizeVideoInput(&input) != nil {
 		return Task{}, ErrInvalid
 	}

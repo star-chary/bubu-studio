@@ -11,7 +11,7 @@ import (
 )
 
 type Generator interface {
-	Generate(context.Context, string, string, ...string) (ark.ImageResult, error)
+	Generate(context.Context, string, string, *ark.ImageOptions, ...string) (ark.ImageResult, error)
 }
 type ResultStorage interface {
 	ReferenceURLs(context.Context, storage.Scope, []string) ([]string, error)
@@ -149,7 +149,7 @@ func (s *Store) execute(ctx context.Context, t Task, generator Generator, object
 			if prompt == "" {
 				prompt = t.Input.Prompt
 			}
-			generated, err = generator.Generate(jobCtx, prompt, t.Input.Model, urls...)
+			generated, err = generator.Generate(jobCtx, prompt, t.Input.Model, t.Input.ImageOptions, urls...)
 		}
 		cancel()
 		if err != nil {

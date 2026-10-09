@@ -1,4 +1,4 @@
-import type { ImageModelId } from '../models/imageModels'
+import type { ImageModelId, ImageOptions } from '../models/imageModels'
 import type { StoredAsset } from '../api/assets'
 import type { VideoMode, VideoModelId, VideoOptions } from '../models/videoModels'
 import type { PromptPart } from './prompt'
@@ -21,6 +21,7 @@ export interface MediaNodeData {
   videoModel?: VideoModelId
   videoMode?: VideoMode
   imageModel?: ImageModelId
+  imageOptions?: ImageOptions
   origin?: 'upload' | 'generated'
   asset?: StoredAsset
   storage?: { status: 'saving' | 'saved' | 'error'; error?: string }

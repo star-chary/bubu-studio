@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { MediaKind, MediaNodeData, MediaReference } from '../canvas/media'
-import ImageModelSelect from './ImageModelSelect.vue'
+import ImageGenerationControls from './ImageGenerationControls.vue'
 import VideoGenerationControls from './VideoGenerationControls.vue'
-import type { ImageModelId } from '../models/imageModels'
+import { normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
 import { VIDEO_MODEL, normalizeVideoOptions, videoModelDefinition, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
 import PromptEditor from './PromptEditor.vue'
 import { generationStatusLabel } from '../canvas/generationStatus'
@@ -22,6 +22,7 @@ const props = defineProps<{
   videoModel?: VideoModelId
   videoMode?: VideoMode
   imageModel: ImageModelId
+  imageOptions?: ImageOptions
   references: MediaReference[]
   selectingReferences: boolean
   canGenerate: boolean
@@ -38,10 +39,12 @@ const props = defineProps<{
   quoteError: string
   anchor: { x: number; y: number; width: number; height: number }
 }>()
-const emit = defineEmits<{ 'update:promptParts': [value: PromptPart[]]; 'update:imageModel': [value: ImageModelId]; close: []; selectReferences: []; removeReference: [sourceId: string]; generate: []; retryStorage: []; retryQuote: []; 'update:videoModel': [value: VideoModelId]; 'update:videoMode': [value: VideoMode]; 'update:videoOptions': [value: VideoOptions] }>()
+const emit = defineEmits<{ 'update:promptParts': [value: PromptPart[]]; 'update:imageModel': [value: ImageModelId]; 'update:imageOptions': [value: ImageOptions]; close: []; selectReferences: []; removeReference: [sourceId: string]; generate: []; retryStorage: []; retryQuote: []; 'update:videoModel': [value: VideoModelId]; 'update:videoMode': [value: VideoMode]; 'update:videoOptions': [value: VideoOptions] }>()
 const panel = ref<HTMLElement | null>(null)
 const input = ref<InstanceType<typeof PromptEditor> | null>(null)
 const videoControls = ref<InstanceType<typeof VideoGenerationControls> | null>(null)
+const imageControls = ref<InstanceType<typeof ImageGenerationControls> | null>(null)
+const image = computed(() => normalizeImageOptions(props.imageModel, props.imageOptions))
 const expanded = ref(false)
 const windowSize = ref({ width: window.innerWidth, height: window.innerHeight })
 const title = computed(() => `${props.kind === 'image' ? '图片' : '视频'}提示词`)
@@ -82,7 +85,8 @@ const layout = computed(() => {
   const margin = 16
   const width = Math.min(expanded.value ? 840 : 660, windowSize.value.width - margin * 2)
   const videoHeight = (windowSize.value.width <= 600 ? 306 : 242) + (props.references.length ? 70 : 0)
-  const height = Math.min(expanded.value ? 468 : props.kind === 'video' ? videoHeight + 28 : props.references.length ? 282 : 222, windowSize.value.height - margin * 2)
+  const imageHeight = (props.references.length ? 282 : 222) + (windowSize.value.width <= 600 ? 38 : 0)
+  const height = Math.min(expanded.value ? 468 : props.kind === 'video' ? videoHeight + 28 : imageHeight, windowSize.value.height - margin * 2)
   const maxX = windowSize.value.width - width - margin
   const maxY = windowSize.value.height - height - margin
   const below = props.anchor.y + props.anchor.height + 12
@@ -108,6 +112,7 @@ watch(() => props.selectingReferences, async (selecting) => {
   if (selecting) {
     input.value?.closeMenu()
     videoControls.value?.close()
+    imageControls.value?.close()
     expanded.value = false
     return
   }
@@ -120,6 +125,7 @@ async function toggleExpanded() {
   const selection = input.value?.capture()
   input.value?.closeMenu()
   videoControls.value?.close()
+  imageControls.value?.close()
   expanded.value = !expanded.value
   await nextTick()
   input.value?.focus()
@@ -157,7 +163,7 @@ onBeforeUnmount(() => {
   <section
     ref="panel"
     class="node-prompt-panel"
-    :class="{ 'is-expanded': expanded, 'is-video': kind === 'video' }"
+    :class="{ 'is-expanded': expanded, 'is-video': kind === 'video', 'is-selecting': selectingReferences }"
     :style="layout"
     role="dialog"
     aria-labelledby="node-prompt-title"
@@ -221,7 +227,7 @@ onBeforeUnmount(() => {
     <button v-if="generation?.taskStatus === 'storage_failed'" class="retry-video-storage" type="button" @click="emit('retryStorage')">重试保存视频</button>
     <p v-if="generation?.error" class="generation-error" role="alert">{{ generation.error }}</p>
     <p v-if="canGenerate && ((kind === 'image' && referenceError) || promptLength > 2000)" class="generation-hint">{{ promptLength > 2000 ? '提示词最多 2000 字' : referenceError }}</p>
-    <p v-else-if="canGenerate && kind === 'image' && references.length && !hasMentions" class="generation-hint">将使用以上 {{ references.length }} 张参考图片，生成单张图片</p>
+    <p v-else-if="canGenerate && kind === 'image' && references.length && !hasMentions" class="generation-hint">将使用以上 {{ references.length }} 张参考图片，生成{{ image.count === 1 ? '单张图片' : `${image.count} 张图片` }}</p>
     <template v-if="kind === 'video'">
       <template v-if="selectedVideoMode === 'reference'">
         <p class="generation-hint">{{ referenceSummary }} · 视频、音频各 ≤{{ videoDefinition.maxReferenceSeconds }} 秒</p>
@@ -233,8 +239,7 @@ onBeforeUnmount(() => {
     <button v-if="canGenerate && quoteStatus === 'error' && persistenceEnabled" class="retry-quote" type="button" @click="emit('retryQuote')">重新获取报价</button>
     <footer v-if="canGenerate" class="prompt-generation-footer">
       <div class="generation-options">
-        <ImageModelSelect v-if="kind === 'image'" :key="nodeId" :model-value="imageModel" :panel-position="layout" @update:model-value="emit('update:imageModel', $event)" />
-        <span v-if="kind === 'image'" class="generation-description">2K · 单张</span>
+        <ImageGenerationControls v-if="kind === 'image'" :key="nodeId" ref="imageControls" :model-value="image" :image-model="imageModel" :panel-position="layout" @update:model-value="emit('update:imageOptions', $event)" @update:image-model="emit('update:imageModel', $event)" />
         <VideoGenerationControls v-else :key="nodeId" ref="videoControls" :model-value="video" :video-model="selectedVideoModel" :video-mode="selectedVideoMode" :reference-count="references.length" :reference-error="referenceError" :panel-position="layout" @update:model-value="emit('update:videoOptions', $event)" @update:video-model="emit('update:videoModel', $event)" @update:video-mode="emit('update:videoMode', $event)" />
       </div>
       <div class="generation-actions">
@@ -257,7 +262,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .retry-video-storage { align-self: flex-start; margin-top: 6px; border: 1px solid #888; border-radius: 6px; padding: 5px 10px; background: #353535; color: #fff; cursor: pointer; }
 
-.node-prompt-panel { position: fixed; z-index: 15; display: flex; flex-direction: column; padding: 12px 16px 18px; border: 1px solid #383838; border-radius: 18px; background: #262626; box-shadow: 0 8px 24px #0003; }
+.node-prompt-panel { position: fixed; z-index: 35; display: flex; flex-direction: column; padding: 12px 16px 18px; border: 1px solid #383838; border-radius: 18px; background: #262626; box-shadow: 0 8px 24px #0003; }
+.node-prompt-panel.is-selecting { z-index: 15; }
 .node-prompt-panel:focus-within { border-color: #505050; }
 .prompt-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; }
 .prompt-reference-button { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 28px; padding: 0 9px 0 6px; border: 0; border-radius: 14px; background: #353535; color: #d6d6d6; cursor: pointer; font-size: 12px; }
@@ -288,11 +294,10 @@ onBeforeUnmount(() => {
 .mention-generation-status { color: #cbb69c; }
 .prompt-generation-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .generation-options { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.generation-description { flex: none; padding-left: 12px; border-left: 1px solid #494949; color: #aaa; font-size: 12px; }
 .generation-hint { flex: none; margin: 6px 0 0; color: #bbb; font-size: 12px; }
 .credit-notice { color: #f0b8a9; }
 .retry-quote { align-self: flex-start; margin-top: 5px; border: 0; padding: 0; background: none; color: #bdd4ff; font-size: 12px; cursor: pointer; }
-@media (max-width: 600px) { .generation-description { display: none; } }
+@media (max-width: 600px) { .prompt-generation-footer { align-items: flex-end; gap: 6px; } }
 .generation-actions { display: inline-flex; flex: none; align-items: center; gap: 7px; margin-left: auto; }
 .credit-cost { position: relative; flex: none; color: #a6a6a6; }
 .credit-cost.has-error { color: #e2b296; }

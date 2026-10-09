@@ -106,7 +106,7 @@ JSONB 适合当前整张画布保存与恢复；若未来需要多人协同、�
 | `GET /api/canvases/:id/tasks?limit=20&offset=0` | 返回 `{ tasks, hasMore }`，按创建时间倒序，limit 为 1～100 |
 | `GET /api/canvases/:id/tasks?latest=true` | 返回每个节点的最新任务，供刷新与轮询恢复 |
 
-快照节点格式：`{ id, position: {x,y}, data: {kind,name,prompt?,promptParts?,imageModel?,origin?,referenceIds?} }`；快照另含 `viewport: {x,y,zoom}`。2026-10-02 新增可选的结构化提示词片段 `promptParts`，沿用 JSONB；旧纯文本画布兼容，含引用片段的新生成任务暂返回 409 `PROMPT_REFERENCES_NOT_READY`，已有任务的幂等重查保持不变，详见 [提示词引用](./prompt-mentions.md)。任务返回 `id/input/status/result?/error?/createdAt/startedAt?/finishedAt?/updatedAt`；其中 `result` 沿用原生成结果结构 `url/model/size?/asset?/storageError?`。
+快照节点格式：`{ id, position: {x,y}, data: {kind,name,prompt?,promptParts?,imageModel?,imageOptions?,videoModel?,videoMode?,videoOptions?,origin?,referenceIds?} }`；快照另含 `viewport: {x,y,zoom}`。2026-10-09 增加可选 `imageOptions: {resolution,ratio,count}`，继续保存于 JSONB，无新迁移；每个图片任务的 `input.imageOptions` 只含分辨率和比例，批量生成对应独立节点与任务。旧节点缺省为 2K／自动／单张，详见 [图片生成](./image-generation.md)。结构化 `promptParts` 已通过素材绑定编译成供应商提示词，见 [引用生成](./reference-generation.md)。任务返回 `id/input/status/result?/error?/createdAt/startedAt?/finishedAt?/updatedAt`；其中 `result` 沿用生成结果结构 `url/model/size?/asset?/storageError?`。
 
 ## 已验证与边界
 

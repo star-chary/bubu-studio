@@ -19,7 +19,7 @@ import (
 )
 
 type imageGenerator interface {
-	Generate(context.Context, string, string, ...string) (ark.ImageResult, error)
+	Generate(context.Context, string, string, *ark.ImageOptions, ...string) (ark.ImageResult, error)
 }
 
 func imageHandler(generator imageGenerator, store AssetStore, db *persistence.Store) gin.HandlerFunc {
@@ -49,6 +49,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 			CanvasID       string                   `json:"canvasId"`
 			NodeID         string                   `json:"nodeId"`
 			ReferenceKeys  []string                 `json:"referenceKeys"`
+			ImageOptions   *ark.ImageOptions        `json:"imageOptions"`
 		}
 		if err := decoder.Decode(&input); err != nil {
 			fail(400, "INVALID_REQUEST", "请求格式无效，请检查提示词、模型及画布和节点 ID。")
@@ -66,6 +67,13 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 		model, err := ark.ResolveImageModel(input.Model)
 		if err != nil {
 			fail(400, "INVALID_MODEL", err.Error())
+			return
+		}
+		if _, err := ark.ResolveImageOptions(model, input.ImageOptions); err != nil {
+			var failure *ark.APIError
+			if errors.As(err, &failure) {
+				fail(failure.Status, failure.Code, failure.Message)
+			}
 			return
 		}
 		if len(input.ReferenceKeys) > ark.MaxReferenceImages(model) {
@@ -104,7 +112,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 					return input.Prompt
 				}
 				return prompt
-			}(), PromptParts: input.PromptParts, Model: model, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}, input.AcceptedPoints, input.PriceVersion)
+			}(), PromptParts: input.PromptParts, Model: model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}, input.AcceptedPoints, input.PriceVersion)
 			if err != nil {
 				persistenceFailure(c, err)
 				return
@@ -129,7 +137,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 				return
 			}
 		}
-		result, err := generator.Generate(c.Request.Context(), prompt, model, referenceURLs...)
+		result, err := generator.Generate(c.Request.Context(), prompt, model, input.ImageOptions, referenceURLs...)
 		if err != nil {
 			var apiError *ark.APIError
 			if errors.As(err, &apiError) {

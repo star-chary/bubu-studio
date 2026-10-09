@@ -126,6 +126,9 @@ func normalizeVideoOptions(in *Input) error {
 }
 
 func NormalizeVideoInput(in *Input) error {
+	if in.ImageOptions != nil {
+		return ErrInvalid
+	}
 	if normalizeVideoOptions(in) != nil {
 		return ErrInvalid
 	}

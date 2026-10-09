@@ -4,13 +4,14 @@ import type { PromptPart } from '../canvas/prompt'
 import type { VideoMode, VideoOptions } from '../models/videoModels'
 import type { StoredAsset } from './assets'
 import type { MediaNodeData } from '../canvas/media'
+import type { ImageGenerationOptions } from '../models/imageModels'
 
 export interface CanvasSnapshot {
-  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'videoModel' | 'videoMode' | 'videoOptions' | 'origin' | 'referenceIds'> }[]
+  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'videoOptions' | 'origin' | 'referenceIds'> }[]
   viewport: { x: number; y: number; zoom: number }
 }
 export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio' }
-export interface TaskInput extends Partial<VideoOptions> { prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; referenceKeys?: string[]; references?: TaskReference[]; mode?: VideoMode }
+export interface TaskInput extends Partial<VideoOptions> { prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; imageOptions?: ImageGenerationOptions; referenceKeys?: string[]; references?: TaskReference[]; mode?: VideoMode }
 export interface GenerationTask {
   id: string
   kind?: 'image' | 'video'

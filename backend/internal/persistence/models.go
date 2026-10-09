@@ -35,17 +35,22 @@ type VideoOptions struct {
 	Duration      int    `json:"duration"`
 	GenerateAudio bool   `json:"generateAudio"`
 }
+type ImageNodeOptions struct {
+	ark.ImageOptions
+	Count int `json:"count"`
+}
 type NodeData struct {
-	VideoOptions *VideoOptions `json:"videoOptions,omitempty"`
-	VideoModel   string        `json:"videoModel,omitempty"`
-	VideoMode    string        `json:"videoMode,omitempty"`
-	Kind         string        `json:"kind"`
-	Name         string        `json:"name"`
-	Prompt       string        `json:"prompt,omitempty"`
-	PromptParts  []PromptPart  `json:"promptParts,omitempty"`
-	ImageModel   string        `json:"imageModel,omitempty"`
-	Origin       string        `json:"origin,omitempty"`
-	ReferenceIDs []string      `json:"referenceIds,omitempty"`
+	ImageOptions *ImageNodeOptions `json:"imageOptions,omitempty"`
+	VideoOptions *VideoOptions     `json:"videoOptions,omitempty"`
+	VideoModel   string            `json:"videoModel,omitempty"`
+	VideoMode    string            `json:"videoMode,omitempty"`
+	Kind         string            `json:"kind"`
+	Name         string            `json:"name"`
+	Prompt       string            `json:"prompt,omitempty"`
+	PromptParts  []PromptPart      `json:"promptParts,omitempty"`
+	ImageModel   string            `json:"imageModel,omitempty"`
+	Origin       string            `json:"origin,omitempty"`
+	ReferenceIDs []string          `json:"referenceIds,omitempty"`
 }
 type Node struct {
 	ID       string   `json:"id"`
@@ -78,18 +83,19 @@ type CanvasSummary struct {
 	Preview   []CanvasPreviewNode `json:"preview"`
 }
 type Input struct {
-	PromptParts   []PromptPart `json:"promptParts,omitempty"`
-	References    []Reference  `json:"references,omitempty"`
-	Mode          string       `json:"mode,omitempty"`
-	Resolution    string       `json:"resolution,omitempty"`
-	Ratio         string       `json:"ratio,omitempty"`
-	Duration      int          `json:"duration,omitempty"`
-	GenerateAudio *bool        `json:"generateAudio,omitempty"`
-	Prompt        string       `json:"prompt"`
-	Model         string       `json:"model"`
-	CanvasID      string       `json:"canvasId"`
-	NodeID        string       `json:"nodeId"`
-	ReferenceKeys []string     `json:"referenceKeys,omitempty"`
+	ImageOptions  *ark.ImageOptions `json:"imageOptions,omitempty"`
+	PromptParts   []PromptPart      `json:"promptParts,omitempty"`
+	References    []Reference       `json:"references,omitempty"`
+	Mode          string            `json:"mode,omitempty"`
+	Resolution    string            `json:"resolution,omitempty"`
+	Ratio         string            `json:"ratio,omitempty"`
+	Duration      int               `json:"duration,omitempty"`
+	GenerateAudio *bool             `json:"generateAudio,omitempty"`
+	Prompt        string            `json:"prompt"`
+	Model         string            `json:"model"`
+	CanvasID      string            `json:"canvasId"`
+	NodeID        string            `json:"nodeId"`
+	ReferenceKeys []string          `json:"referenceKeys,omitempty"`
 }
 type Result struct {
 	Resolution      string  `json:"resolution,omitempty"`
@@ -141,6 +147,14 @@ func (s Snapshot) Validate() error {
 		}
 		if _, ok := nodes[n.ID]; ok {
 			return ErrInvalid
+		}
+		if options := n.Data.ImageOptions; options != nil {
+			if n.Data.Kind != "image" || (options.Count != 1 && options.Count != 2 && options.Count != 4) {
+				return ErrInvalid
+			}
+			if _, err := ark.ResolveImageOptions(n.Data.ImageModel, &options.ImageOptions); err != nil {
+				return ErrInvalid
+			}
 		}
 		if n.Data.Kind == "video" {
 			in := Input{CanvasID: n.ID, NodeID: n.ID, Model: n.Data.VideoModel, Mode: n.Data.VideoMode, Duration: 4}

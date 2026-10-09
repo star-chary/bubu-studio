@@ -84,6 +84,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeOnOutside, true)
 })
+defineExpose({ close: closeMenu })
 </script>
 
 <template>
@@ -105,7 +106,7 @@ onBeforeUnmount(() => {
         :tabindex="index === focusedIndex ? 0 : -1" @focus="focusedIndex = index" @click="choose(model.id)"
       >
         <span class="model-option-icon"><svg class="model-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7v6m4-9v12m3-7v7m3-10v10m4-8v6" /></svg></span>
-        <span class="model-option-copy"><strong>{{ model.name }}</strong><span>文生图 · 2K · 单张</span></span>
+        <span class="model-option-copy"><strong>{{ model.name }}</strong><span>文生图 / 图生图 · {{ model.resolutions.join(' / ') }}</span></span>
         <svg v-if="model.id === modelValue" class="model-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
       </button>
     </div>

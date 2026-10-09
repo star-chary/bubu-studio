@@ -25,7 +25,7 @@ test('点击两种空节点弹出输入框，放大恢复保留文字和选区�
   const panel = page.getByRole('dialog', { name: '图片提示词' })
   const input = panel.getByRole('textbox', { name: '图片提示词' })
   await expect(input).toBeFocused()
-  await expect(panel.getByRole('button')).toHaveCount(4)
+  await expect(panel.getByRole('button', { name: /^图片参数，/ })).toBeVisible()
   const nodeBox = await image.boundingBox()
   const initialBox = await panel.boundingBox()
   expect(initialBox!.y).toBeGreaterThan(nodeBox!.y + nodeBox!.height)

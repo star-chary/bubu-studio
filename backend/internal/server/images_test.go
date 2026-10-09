@@ -15,7 +15,44 @@ import (
 
 type generateFunc func(context.Context, string, string) (ark.ImageResult, error)
 
-func (f generateFunc) Generate(ctx context.Context, prompt, model string, _ ...string) (ark.ImageResult, error) {
+type configuredImageGenerator struct {
+	options *ark.ImageOptions
+	calls   int
+}
+
+func (g *configuredImageGenerator) Generate(_ context.Context, _, model string, options *ark.ImageOptions, _ ...string) (ark.ImageResult, error) {
+	g.calls++
+	g.options = options
+	return ark.ImageResult{URL: "https://images.example.test/result.png", Model: model}, nil
+}
+
+func TestImageHTTPOptionsValidatedAndForwarded(t *testing.T) {
+	g := &configuredImageGenerator{}
+	router := newHandlerTestRouter(g, nil)
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{`{"prompt":"test","model":"doubao-seedream-5-0-pro-260628","imageOptions":{"resolution":"4K","ratio":"1:1"}}`, 400},
+		{`{"prompt":"test","imageOptions":{"resolution":"1K","ratio":"1:1"}}`, 400},
+		{`{"prompt":"test","imageOptions":{"resolution":"2K","ratio":"16:10"}}`, 400},
+		{`{"prompt":"test","imageOptions":{"resolution":"2K","ratio":"16:9","count":4}}`, 400},
+		{`{"prompt":"test","model":"doubao-seedream-5-0-pro-260628","imageOptions":{"resolution":"1K","ratio":"16:9"}}`, 200},
+	} {
+		req := httptest.NewRequest("POST", "/api/images/generations", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != tc.status {
+			t.Fatalf("status %d, want %d: %s", w.Code, tc.status, w.Body.String())
+		}
+	}
+	if g.calls != 1 || g.options == nil || *g.options != (ark.ImageOptions{Resolution: "1K", Ratio: "16:9"}) {
+		t.Fatalf("wrong forwarded options: %+v", g)
+	}
+}
+
+func (f generateFunc) Generate(ctx context.Context, prompt, model string, _ *ark.ImageOptions, _ ...string) (ark.ImageResult, error) {
 	return f(ctx, prompt, model)
 }
 

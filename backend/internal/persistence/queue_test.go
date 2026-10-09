@@ -112,7 +112,7 @@ func (f *concurrentVideoFake) QueryVideo(ctx context.Context, id string) (ark.Vi
 	return out, nil
 }
 
-func (f *concurrentVideoFake) Generate(context.Context, string, string, ...string) (ark.ImageResult, error) {
+func (f *concurrentVideoFake) Generate(context.Context, string, string, *ark.ImageOptions, ...string) (ark.ImageResult, error) {
 	f.imageCalls.Add(1)
 	return ark.ImageResult{URL: "https://provider.test/image.png", Model: ark.DefaultImageModel}, nil
 }

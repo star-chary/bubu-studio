@@ -36,7 +36,7 @@ type videoFake struct {
 	query                   func(context.Context) (ark.VideoResponse, error)
 }
 
-func (v *videoFake) Generate(context.Context, string, string, ...string) (ark.ImageResult, error) {
+func (v *videoFake) Generate(context.Context, string, string, *ark.ImageOptions, ...string) (ark.ImageResult, error) {
 	panic("unexpected image generation")
 }
 func (v *videoFake) CreateVideo(_ context.Context, in ark.VideoRequest) (string, error) {

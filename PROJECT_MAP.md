@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-09 图片参数更新（本地，未部署）：图片节点增加分辨率／比例／1、2、4 张弹层；Lite 显示 2K／3K／4K，Pro 显示 1K／1.5K／2K。设置按节点保存，后端按模型校验并映射到实际尺寸；批量保存额外节点后提交独立单图任务，每张独立结算，失败停止后续提交。Pro 低分辨率报价已更新，总积分随张数变化；无新表、迁移或第三方服务。独立 PostgreSQL 的 Go 全包测试、vet 与前端构建通过；99 项浏览器用例已完成验证（旧按钮数量断言更新后复测通过）。未调用付费模型。实现与验收边界见 [图片生成](./docs/image-generation.md)。
+
 2026-10-08 BuBu-后台管理：根目录 `admin/` 与 `frontend/`、`backend/` 并列。已实现管理员登录、用户查询／分页、测试积分发放与审计流水；新增角色／审计字段迁移 007 和服务器端初始化工具。Go／PostgreSQL、vet、前后端构建、管理端 6/6 与画布登录／积分 18/18 浏览器回归通过，真实隔离数据库链路验证重复提交仅发一次、画布读取新余额。已随 `20261008T055817Z` 发布到正式站点 `/admin/`，完成数据库备份、迁移和线上管理员初始化；正式 HTTPS 的真实浏览器已验证登录、用户查询、发放防重、审计、画布余额与权限，临时账号及测试积分已清理。未调用 Ark／OSS。见 [管理端说明](./docs/admin.md)。
 
 2026-10-08 注册赠分更新：新账号创建时，在用户与首个 Session 的同一 PostgreSQL 事务中写入 200 测试积分账户和唯一 `grant` 流水；已有账号登录不重复赠送，旧账号不自动补发，充值仍未开放。未新增表或迁移。独立 PostgreSQL 的 Go 全包测试、vet、前端构建及 18/18 项登录／积分浏览器回归通过；真实 Chrome → Vite → Gin → 隔离 schema 验证两个新账号各得 200 分且重登不重复，未调用方舟或 OSS。发布 `20261008T042639Z` 已生成备份并完成正式 HTTPS 注册赠分验收：新账号 200 分及一条流水，Chrome 重登不重复，临时账号已精确清理；未调用生成模型。邮箱未验证，用户选择暂不设置每日新账号总量上限，当前也没有平台预算熔断；换邮箱或 IP 批量领取积分的风险仍存在。详见 [登录与鉴权](./docs/authentication.md) 和 [测试积分](./docs/test-credits.md)。
@@ -52,6 +54,8 @@
 | `backend/cmd/grant-test-credits/` | 仅用于单个旧账号的幂等手动补发预览／执行；已获注册赠分账号被拒绝 |
 | `backend/cmd/reset-canvases/` | 显式旧画布清理工具，默认只读且拒绝重置已有用户数据 |
 | `AGENTS.md` | AI 协作与工程解释约定 |
+| `frontend/src/components/ImageGenerationControls.vue`、`frontend/src/models/imageModels.ts`、`frontend/tests/image-controls.spec.ts` | 随模型切换的图片参数、批量数量、节点独立保存及浏览器回归 |
+| `backend/internal/ark/image_options.go`、`backend/internal/persistence/image_options_test.go` | 模型尺寸白名单、旧参数兼容、持久化任务传参与分辨率报价验证 |
 | `frontend/src/components/VideoGenerationControls.vue`、`frontend/tests/video-controls.spec.ts` | 四款视频模型、文生视频／全能参考、参数弹层与交互回归 |
 | `docs/video-models.md`、`docs/video-prompt-controls.md` | 当前视频模型能力、报价与数据流；控件历史阶段记录 |
 | `docs/canvas-library.md`、`frontend/src/views/GuestHomePage.vue`、`HomePage.vue` | 公开首页、登录后个人画布库、命名新建、历史分页与布局预览 |
@@ -63,7 +67,7 @@
 | `backend/internal/persistence/prompt.go`、`prompt_test.go` | 引用草稿校验、数据库保存与新任务提交边界 |
 | `README.md` | 启动命令、交互、状态流、验收结果与边界 |
 | `backend/README.md` | 后端范围、启动、目录职责与构建说明 |
-| `docs/image-generation.md` | 文生图 / 图生图操作、参考输入契约、签名机制、单张输出和验证证据 |
+| `docs/image-generation.md` | 文生图 / 图生图、模型参数与批量独立任务、参考契约、签名机制及验证证据 |
 | `docs/media-references.md` | 第三步已完成范围、素材数据流、校验职责、真实验收与学习重点 |
 | `backend/internal/storage/probe.go`、`video_reference.go`、`probe_test.go` | 真实媒体参数探测、单文件参考条件及边界验证 |
 | `frontend/src/canvas/videoReferences.ts`、`tests/audio-references.spec.ts`、`tests/video-reference-rules.spec.ts` | 全模态参考前置提示、音频交互和数量 / 时长边界 |

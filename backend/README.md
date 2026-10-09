@@ -95,7 +95,7 @@ backend/
 {"taskId":"39c6f2cd-9379-4486-ad15-ea1f7fabed85","prompt":"黑洞中冲出一辆复古列车，电影质感","model":"doubao-seedream-5-0-pro-260628","canvasId":"f2476fbb-2af0-494f-9a38-f8f9bdf1e5ac","nodeId":"56b46c49-fc0b-41cf-9db0-01493aa14d3f","acceptedPoints":16,"priceVersion":"test-2026-10-06-v1"}
 ```
 
-接收 `taskId`、`prompt`、可选的 `model`、必填的 `canvasId` 和 `nodeId`，以及可选的 `referenceKeys: string[]`、`promptParts`。参考列表为空时为文生图，有值时为图生图，详见 [图片生成说明](../docs/image-generation.md) 和 [引用生成第二阶段](../docs/reference-generation.md)。归属 ID 必须为 UUID，否则在付费模型调用前拒绝请求。提示词去除两端空白后要求 1～2000 个 Unicode 字符，请求体上限 64 KiB。`model` 省略或留空时默认 Lite；未知模型返回 400 / `INVALID_MODEL`。拒绝其他字段，不能从浏览器传入密钥、尺寸、任意图片 URL 或 Base64；参考只能提交已保存且归属正确的资源。
+接收 `taskId`、`prompt`、可选的 `model`、必填的 `canvasId` 和 `nodeId`，以及可选的 `referenceKeys: string[]`、`promptParts`、`imageOptions: {resolution,ratio}`。参考列表为空时为文生图，有值时为图生图，详见 [图片生成说明](../docs/image-generation.md) 和 [引用生成第二阶段](../docs/reference-generation.md)。归属 ID 必须为 UUID，否则在付费模型调用前拒绝请求。提示词去除两端空白后要求 1～2000 个 Unicode 字符，请求体上限 64 KiB。`model` 省略或留空时默认 Lite；未知模型返回 400 / `INVALID_MODEL`。后端按模型校验分辨率和比例，拒绝其他字段，不能从浏览器传入密钥、任意像素尺寸、任意图片 URL 或 Base64；参考只能提交已保存且归属正确的资源。
 
 | 展示名称 | model 值 |
 | --- | --- |
@@ -112,7 +112,7 @@ Lite 沿用前一阶段真实验证过的 ID；Pro ID 核对自[火山方舟模�
 
 启用 OSS 且转存成功时，`url` 改为 `/api/assets/content?key=...`，额外返回包含 Object Key、来源、类型、大小和画布 / 节点 ID 的 `asset`，此时才结算积分。图片转存失败时任务仍提供临时图片并包含 `storageError`，积分保持冻结待核查；不会把保存失败变成再次调用模型。完整资源响应见对象存储说明。
 
-`model` 为本次实际调用的 ID，`size` 来自模型实际返回，可能省略。两个模型都请求单张图片、`response_format=url`、`size=2K`、`watermark=true`；2K 是请求参数，实际宽高由模型输出决定。Lite 额外发送 `sequential_image_generation=disabled`、`stream=false`；根据用户提供的方舟接口文档，Pro 不支持配置这两项，后端会省略，而非复用 Lite 的完整请求体。
+`model` 为本次实际调用的 ID，`size` 来自模型实际返回，可能省略。每个任务请求单张图片、`response_format=url`、`watermark=true`。Lite 支持 2K／3K／4K，Pro 支持 1K／1.5K／2K；固定比例经后端预设表转为像素尺寸，自动比例发送分辨率档位。省略 `imageOptions` 保持旧 2K 自动比例行为。Lite 额外发送 `sequential_image_generation=disabled`、`stream=false`；Pro 省略这两项。前端 1／2／4 张通过独立节点和任务实现，不向供应商发送批量字段。
 
 错误统一返回 `{"error":{"code":"错误码","message":"可展示的中文信息"}}`：
 

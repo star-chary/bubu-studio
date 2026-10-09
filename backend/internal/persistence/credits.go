@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const CreditPriceVersion = "test-2026-10-07-v2"
+const CreditPriceVersion = "test-2026-10-09-v3"
 const SignupTestCredits int64 = 200
 
 const signupCreditKeyPrefix = "signup-welcome-v1:"
@@ -158,6 +158,9 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 			return CreditQuote{}, ErrInvalid
 		}
 		input.Model = model
+		if _, err := ark.ResolveImageOptions(model, input.ImageOptions); err != nil {
+			return CreditQuote{}, ErrInvalid
+		}
 	} else if kind == "video" {
 		if NormalizeVideoInput(&input) != nil {
 			return CreditQuote{}, ErrInvalid
@@ -173,7 +176,12 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 	if kind == "image" {
 		yuan = 0.22
 		if input.Model == ark.ProImageModel {
-			yuan = 0.60 + 0.02*float64(max(0, len(bindings)-1))
+			options, _ := ark.ResolveImageOptions(input.Model, input.ImageOptions)
+			yuan = 0.60
+			if options.Resolution == "1K" || options.Resolution == "1.5K" {
+				yuan = 0.30
+			}
+			yuan += 0.02 * float64(max(0, len(bindings)-1))
 		}
 	} else {
 		yuan, err = s.videoQuoteYuan(ctx, input, bindings)

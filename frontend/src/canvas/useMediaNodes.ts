@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { useVueFlow, type Node, type XYPosition } from '@vue-flow/core'
-import { getMediaKind, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
-import { DEFAULT_IMAGE_MODEL, maxReferenceImages, type ImageModelId } from '../models/imageModels'
+import { getMediaKind, getPreviewSize, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
+import { DEFAULT_IMAGE_MODEL, maxReferenceImages, normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
 import { getStorageConfig, uploadAsset } from '../api/assets'
 import { useCanvasSession } from './useCanvasSession'
 import { submitTask, retryTaskStorage, type GenerationTask, type TaskInput } from '../api/persistence'
@@ -10,7 +10,7 @@ import { videoReferencesError } from './videoReferences'
 import { hasPromptReferences, normalizeParts, promptText, type PromptPart } from './prompt'
 import type { CreditQuote } from '../api/credits'
 
-interface AcceptedGeneration { input: TaskInput; quote: CreditQuote }
+interface AcceptedGeneration { input: TaskInput; quote: CreditQuote; count?: ImageOptions['count'] }
 
 export function useMediaNodes(flowId: string, requestedId: string, temporary: boolean) {
   const { nodes, addNodes, findNode, updateNodeData } = useVueFlow(flowId)
@@ -55,7 +55,12 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function updateImageModel(id: string, imageModel: ImageModelId) {
     const node = findNode(id)
-    if (node?.data.kind === 'image' && node.data.origin !== 'upload') updateNodeData(id, { imageModel })
+    if (node?.data.kind === 'image' && node.data.origin !== 'upload') updateNodeData(id, { imageModel, imageOptions: normalizeImageOptions(imageModel, node.data.imageOptions) })
+  }
+
+  function updateImageOptions(id: string, options: ImageOptions) {
+    const node = findNode(id)
+    if (node?.data.kind === 'image' && node.data.origin !== 'upload') updateNodeData(id, { imageOptions: normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, options) })
   }
 
   function referenceInputFor(id: string): { keys: string[]; error: string } {
@@ -111,8 +116,9 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (node.data.kind === 'image') {
       if (!prompt) return null
       const referenceKeys = referenceInputFor(id).keys
+      const { resolution, ratio } = normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions)
       return { prompt, ...(promptParts?.length ? { promptParts } : {}), model: node.data.imageModel ?? DEFAULT_IMAGE_MODEL,
-        canvasId: canvasId.value, nodeId: id, ...(referenceKeys.length ? { referenceKeys } : {}) }
+        imageOptions: { resolution, ratio }, canvasId: canvasId.value, nodeId: id, ...(referenceKeys.length ? { referenceKeys } : {}) }
     }
     const mode = node.data.videoMode ?? 'reference'
     if (mode === 'text' && !prompt.trim()) return null
@@ -141,29 +147,61 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (!node || node.data.kind !== 'image' || generationRequests.has(id) || node.data.generation?.status === 'generating' || node.data.status === 'loading') return
     const input = acceptedInputFor(id, accepted)
     if (!input) return
+    const options = normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions)
+    const count = accepted.count ?? 1
+    if (count !== options.count) return
     const prompt = input.prompt
     const model = input.model
     const referenceKeys = input.referenceKeys ?? []
-    const controller = new AbortController()
-    generationRequests.set(id, controller)
-    // 固定本次提示词、模型和目标 ID；等待期间修改草稿或模型只影响下一次请求。
-    updateNodeData(id, { generation: { status: 'generating', prompt, model, referenceKeys } })
+    if (nodes.value.length + count - 1 > 300) {
+      updateNodeData(id, { generation: { status: 'error', prompt, model, error: '每个画布最多 300 个节点，请减少生成数量或清理节点。' } })
+      return
+    }
+    // 每张保留独立任务、资源和积分流水；批量只是同一输入快照的多次单图提交。
+    const ids = [id]
+    let slot = 1
+    for (let index = 1; index < count; index++) {
+      let position: XYPosition
+      do {
+        position = { x: node.position.x + (slot % 2) * 512, y: node.position.y + Math.floor(slot / 2) * 364 }
+        slot++
+      } while (nodes.value.some((other) => {
+        const size = getPreviewSize(other.data)
+        return position.x < other.position.x + size.width + 24 && position.x + 504 > other.position.x
+          && position.y < other.position.y + size.height + 48 && position.y + 348 > other.position.y
+      }))
+      ids.push(appendNode({ kind: 'image', name: `${node.data.name} · ${index + 1}`, status: 'empty', prompt,
+        promptParts: input.promptParts?.map((part) => ({ ...part })), imageModel: model as ImageModelId,
+        imageOptions: { ...options, count: 1 }, referenceIds: [...(node.data.referenceIds ?? [])] }, position))
+    }
+    const jobs = ids.map((nodeId) => ({ nodeId, taskId: crypto.randomUUID(), controller: new AbortController() }))
+    for (const job of jobs) {
+      generationRequests.set(job.nodeId, job.controller)
+      updateNodeData(job.nodeId, { generation: { status: 'generating', prompt, model, referenceKeys } })
+    }
+    let submitted = 0
     try {
       await session.flush()
-      const taskId = crypto.randomUUID()
-      updateNodeData(id, { generation: { status: 'generating', taskId, prompt, model, referenceKeys } })
-      const task = await submitTask(taskId, { ...input, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion })
-      if (!disposed) session.track(task, true)
+      for (const job of jobs) {
+        if (disposed) return
+        if (!findNode(job.nodeId)) throw new Error('目标节点已移除，剩余图片未提交。')
+        updateNodeData(job.nodeId, { generation: { status: 'generating', taskId: job.taskId, prompt, model, referenceKeys } })
+        const task = await submitTask(job.taskId, { ...input, nodeId: job.nodeId, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion })
+        submitted++
+        if (!disposed) session.track(task, true)
+      }
     } catch (error) {
-      if (generationRequests.get(id) !== controller || !findNode(id)) return
-      updateNodeData(id, {
-        generation: {
+      if (disposed) return
+      const message = error instanceof Error ? error.message : '图片提交失败，请稍后重试。'
+      if (count > 1) importNotice.value = `本批共 ${count} 张，已确认提交 ${submitted} 张。${message} 请查看各节点或任务记录，避免重复生成。`
+      for (const [index, job] of jobs.entries()) {
+        if (index < submitted || !findNode(job.nodeId)) continue
+        updateNodeData(job.nodeId, { generation: { ...findNode(job.nodeId)!.data.generation,
           status: 'error', prompt, model, referenceKeys,
-          error: error instanceof Error ? error.message : '图片提交失败，请稍后重试。',
-        },
-      })
+          error: index === submitted ? message : '本批提交已停止，此图片尚未提交，可单独生成。' } })
+      }
     } finally {
-      if (generationRequests.get(id) === controller) generationRequests.delete(id)
+      for (const job of jobs) if (generationRequests.get(job.nodeId) === job.controller) generationRequests.delete(job.nodeId)
     }
   }
 
@@ -355,5 +393,5 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

@@ -72,7 +72,7 @@ func input() Input {
 
 type generateFunc func(context.Context, string, string, ...string) (ark.ImageResult, error)
 
-func (f generateFunc) Generate(c context.Context, p, m string, r ...string) (ark.ImageResult, error) {
+func (f generateFunc) Generate(c context.Context, p, m string, _ *ark.ImageOptions, r ...string) (ark.ImageResult, error) {
 	return f(c, p, m, r...)
 }
 func startWorker(t *testing.T, s *Store, g Generator, o ResultStorage) func() {
