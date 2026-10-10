@@ -146,7 +146,8 @@ function openPrompt({ event, node }: NodeMouseEvent) {
     selectReference(node.id)
     return
   }
-  if (node.data.kind === 'audio') { activePromptId.value = null; return }
+  // 上传素材用于预览和参考，只有生成节点打开提示词面板。
+  if (node.data.kind === 'audio' || node.data.origin === 'upload') { activePromptId.value = null; return }
   activePromptId.value = node.id
 }
 

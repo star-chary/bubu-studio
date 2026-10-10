@@ -69,7 +69,7 @@ test('点击两种空节点弹出输入框，放大恢复保留文字和选区�
   expect(requests).toEqual([])
 })
 
-test('上传素材也能打开输入框，视频控件和节点拖动不误弹面板', async ({ page }) => {
+test('上传图片和视频不打开提示词框，切换时关闭生成面板且保留播放和拖动', async ({ page }) => {
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
   await page.mouse.click(80, 140, { button: 'right' })
   const chooserPromise = page.waitForEvent('filechooser')
@@ -87,11 +87,8 @@ test('上传素材也能打开输入框，视频控件和节点拖动不误弹�
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
   await videoNode.click({ position: { x: 100, y: 100 } })
-  const input = page.getByRole('textbox', { name: '视频提示词' })
-  await expect(input).toBeFocused()
-  await input.fill('测试视频草稿')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
-  await page.keyboard.press('Escape')
   const before = (await videoNode.boundingBox())!
   await page.mouse.move(before.x + 80, before.y + 80)
   await page.mouse.down()
@@ -100,9 +97,19 @@ test('上传素材也能打开输入框，视频控件和节点拖动不误弹�
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect((await videoNode.boundingBox())!.x - before.x).toBeCloseTo(50, 1)
   await videoNode.click({ position: { x: 100, y: 100 } })
-  await expect(input).toHaveText('测试视频草稿')
-  await page.getByRole('article', { name: 'sample-image.png', exact: true }).click({ position: { x: 100, y: 100 } })
-  await expect(page.getByRole('textbox', { name: '图片提示词' })).toBeFocused()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const imageNode = page.getByRole('article', { name: 'sample-image.png', exact: true })
+  await imageNode.click({ position: { x: 100, y: 100 } })
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await addNode(page, '图片', 80, 550)
+  const generationNode = page.getByRole('article', { name: '图片节点 1', exact: true })
+  for (const uploadedNode of [imageNode, videoNode]) {
+    await generationNode.click({ position: { x: 80, y: 80 } })
+    await expect(page.getByRole('dialog', { name: '图片提示词' })).toBeVisible()
+    await uploadedNode.click({ position: { x: 100, y: 100 } })
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  }
   await page.mouse.click(50, 750, { button: 'right' })
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('menu')).toBeVisible()
