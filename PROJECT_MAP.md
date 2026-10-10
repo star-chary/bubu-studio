@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-11 预览恢复（本地已验证，尚未上线）：图片、视频读取超过 30 秒只提示加载较慢，保留原请求；慢加载与失败状态新增“重新加载预览”，仅重新读取已有素材。旧预览迟到事件不影响重试后的结果，重试次数不写入画布。10/10 项针对性浏览器回归、类型检查及构建通过，接口使用模拟数据，未调用方舟／OSS。实现与验证边界见 [素材预览等待与重试](./docs/media-preview.md)。
+
 2026-10-10 节点删除（已随 `20261010T100525Z` 发布，功能提交 `facfdd2`）：节点右键菜单复用现有画布菜单，支持“删除”和选中后按 Delete；点击节点保留画布焦点，输入区和参考选择期间保护删除键。移除节点后清理上传、预览及关联引用，通过现有快照自动保存；已提交任务与云端素材保留。本地与正式 HTTPS 前端产物均通过 13/13 删除专项浏览器回归，类型检查及构建通过，未运行其他功能回归。线上回归使用模拟业务接口，没有写入生产数据；发布复用后端与管理端，后端进程编号不变，保留上一版用于回退。实现、数据流和验收边界见 [节点删除](./docs/node-deletion.md)。
 
 2026-10-09 图片参数更新（已随 `20261009T074301Z` 发布）：图片节点增加分辨率／比例／1、2、4 张弹层；Lite 显示 2K／3K／4K，Pro 显示 1K／1.5K／2K。设置按节点保存，后端按模型校验并映射到实际尺寸；批量保存额外节点后提交独立单图任务，每张独立结算，失败停止后续提交。Pro 低分辨率报价已更新，总积分随张数变化；无新表、迁移或第三方服务。独立 PostgreSQL 的 Go 全包测试、vet 与前端构建通过；99 项浏览器用例已完成验证（旧按钮数量断言更新后复测通过）。发布前完成数据库备份；正式 HTTPS 的真实 Chrome 已验证模型参数切换、总报价、保存刷新恢复、服务端非法参数拒绝和手机布局，临时账号与画布已清理。批量生成由本地模拟供应商验证，本次未调用付费模型。实现与验收边界见 [图片生成](./docs/image-generation.md)。
@@ -106,13 +108,13 @@
 | `frontend/src/components/CanvasToolbar.vue` | 缩放比例、缩放按钮、重置操作 |
 | `frontend/src/components/CanvasContextMenu.vue` | 画布两层菜单与节点删除菜单、屏幕边缘定位和关闭；发出上传 / 创建 / 删除节点事件 |
 | `frontend/tests/node-deletion.spec.ts`、`docs/node-deletion.md` | 节点删除专项回归、输入保护、关联清理、保存恢复及上传／生成迟到响应边界 |
-| `frontend/src/components/MediaNode.vue` | 媒体预览、独立播放 / 进度控制、加载 / 错误、参考候选状态与连线端点 |
+| `frontend/src/components/MediaNode.vue` | 媒体预览、独立播放 / 进度控制、慢加载提示与重新加载、错误、参考候选状态与连线端点 |
 | `frontend/src/components/NodePromptPanel.vue` | 提示词面板、参考 / 缩略图、文生图按钮 / 状态 / 错误、放大 / 恢复和焦点 |
 | `frontend/src/components/ImageModelSelect.vue` | 两个模型的下拉列表、选中状态、键盘 / 焦点、边缘定位与关闭 |
 | `frontend/src/models/imageModels.ts` | Lite / Pro 展示名称、模型 ID 类型与默认值 |
 | `frontend/src/components/ReferenceSelectionBar.vue` | 蓝色参考选择提示、允许类型 / 操作反馈、返回节点和结束选择 |
 | `frontend/src/canvas/media.ts` | 媒体节点和引用预览数据模型、文件类型识别和预览尺寸计算 |
-| `frontend/src/canvas/useMediaNodes.ts` | 节点 / 导入 / 提示词和模型草稿、生成快照与节点绑定、图片回填、状态 / 超时和资源清理 |
+| `frontend/src/canvas/useMediaNodes.ts` | 节点 / 导入 / 提示词和模型草稿、生成快照与节点绑定、图片回填、预览状态 / 重试和资源清理 |
 | `frontend/src/api/images.ts` | 浏览器文生图 HTTP 请求和响应校验，不包含模型凭据 |
 | `frontend/src/api/assets.ts` | 保存能力配置、二进制上传、资源响应校验 |
 | `frontend/src/canvas/useNodeReferences.ts` | 选择模式、引用规则、ID 关系维护、缩略图 / 连线派生、失效引用清理 |
@@ -152,6 +154,7 @@
 - 改右键菜单：`CanvasContextMenu.vue` → `CanvasPage.vue` → `tests/canvas.spec.ts`。
 - 改节点删除：`docs/node-deletion.md` → `CanvasPage.vue` / `CanvasContextMenu.vue` → `useMediaNodes.ts` / `useNodeReferences.ts` / `useCanvasSession.ts` → `tests/node-deletion.spec.ts`。
 - 改节点显示：`MediaNode.vue` → `media.ts` → `tests/media-nodes.spec.ts`。
+- 改预览慢加载 / 重试：`docs/media-preview.md` → `MediaNode.vue` / `useMediaNodes.ts` / `CanvasPage.vue` → `tests/preview-retry.spec.ts`。
 - 改提示词输入面板：`NodePromptPanel.vue` → `CanvasPage.vue` → `useMediaNodes.ts` → `tests/prompt-panel.spec.ts`。
 - 改参考规则 / 引用数据：`useNodeReferences.ts` → `media.ts` → `CanvasPage.vue` → `tests/references.spec.ts`。
 - 改参考展示 / 连线：`ReferenceSelectionBar.vue`、`NodePromptPanel.vue`、`MediaNode.vue` → `useNodeReferences.ts` → `tests/references.spec.ts`。

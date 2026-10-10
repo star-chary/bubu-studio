@@ -11,6 +11,8 @@ export interface MediaNodeData {
   name: string
   status: 'empty' | 'loading' | 'ready' | 'error'
   url?: string
+  // 仅用于当前页面重新挂载预览，不写入画布快照或生成任务。
+  previewAttempt?: number
   width?: number
   height?: number
   durationSeconds?: number
@@ -55,6 +57,11 @@ export interface MediaDimensions {
   width: number
   height: number
   durationSeconds?: number
+}
+
+export function previewRetryURL(data: MediaNodeData): string | undefined {
+  if (data.storage?.status === 'saved' && data.asset?.url) return data.asset.url
+  return data.origin === 'generated' ? data.url : undefined
 }
 
 export function getMediaKind(file: File): MediaKind | null {

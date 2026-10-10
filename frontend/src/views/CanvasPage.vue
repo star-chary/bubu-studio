@@ -21,7 +21,7 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
 const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate, getSelectedNodes, addSelectedNodes, removeSelectedNodes } = useVueFlow(flowId)
-const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const leaving = ref(false)
@@ -283,7 +283,7 @@ function resetViewport() {
     >
       <Background :gap="24" :size="1" pattern-color="#393c43" />
       <template #node-media="{ id, data, selected }">
-        <MediaNode :data="data" :selected="activePromptId ? activePromptId === id : selected" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" />
+        <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
       </template>
     </VueFlow>
 

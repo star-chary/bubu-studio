@@ -1,6 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { useVueFlow, type Node, type XYPosition } from '@vue-flow/core'
-import { getMediaKind, getPreviewSize, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
+import { getMediaKind, getPreviewSize, previewRetryURL, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
 import { DEFAULT_IMAGE_MODEL, maxReferenceImages, normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
 import { getStorageConfig, uploadAsset } from '../api/assets'
 import { useCanvasSession } from './useCanvasSession'
@@ -16,7 +16,6 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   const { nodes, addNodes, removeNodes, findNode, updateNodeData } = useVueFlow(flowId)
   const importNotice = ref('')
   const urls = new Map<string, string>()
-  const loadTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const generationRequests = new Map<string, AbortController>()
   const session = useCanvasSession(flowId, requestedId, temporary, applyTask)
   const canvasId = session.canvasId
@@ -51,7 +50,6 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   function deleteNodes(ids: string[]) {
     removeNodes(ids)
     for (const id of ids) {
-      clearLoadTimer(id)
       uploadRequests.get(id)?.abort()
       uploadFiles.delete(id)
       queuedUploads.delete(id)
@@ -281,18 +279,10 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (task.status === 'succeeded' && task.result?.url) {
       const result = task.result
       const reuse = current.data.url === result.url && current.data.status === 'ready'
-      clearLoadTimer(id)
       updateNodeData(id, { generation, origin: 'generated', url: result.url, status: reuse ? 'ready' : 'loading', error: undefined,
         width: reuse ? current.data.width : undefined, height: reuse ? current.data.height : undefined,
         asset: result.asset, storage: result.asset ? { status: 'saved' } : result.storageError ? { status: 'error', error: result.storageError } : undefined })
-      if (!reuse) loadTimers.set(id, setTimeout(() => failMedia(id), 30_000))
     } else updateNodeData(id, { generation })
-  }
-
-  function clearLoadTimer(id: string) {
-    const timer = loadTimers.get(id)
-    if (timer) clearTimeout(timer)
-    loadTimers.delete(id)
   }
 
   function saveUploadedNode(id: string) {
@@ -349,7 +339,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   function failMedia(id: string) {
     const node = findNode(id)
     if (!node || node.data.status === 'empty' || node.data.status === 'error') return
-    clearLoadTimer(id)
+    const retryURL = previewRetryURL(node.data)
     uploadRequests.get(id)?.abort()
     uploadFiles.delete(id)
     const url = urls.get(id)
@@ -357,10 +347,19 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     urls.delete(id)
     updateNodeData(id, {
       status: 'error',
-      url: undefined,
-      storage: node.data.storage?.status === 'saved' ? node.data.storage : undefined,
-      error: node.data.origin === 'generated' ? '素材已生成，但预览加载失败或链接已失效。' : '无法预览此文件，请检查文件是否损坏或格式是否受浏览器支持。',
+      url: retryURL,
+      storage: node.data.origin === 'generated' || node.data.storage?.status === 'saved' ? node.data.storage : undefined,
+      error: retryURL ? `${node.data.storage?.status === 'saved' ? '素材已保存' : '素材已生成'}，预览加载失败，请重新加载。` : '无法预览此文件，请检查文件是否损坏或格式是否受浏览器支持。',
     })
+  }
+
+  function retryPreview(id: string) {
+    const node = findNode(id)
+    if (!node || !['loading', 'error'].includes(node.data.status)) return
+    const url = previewRetryURL(node.data)
+    if (!url) return
+    // 只重新读取已有地址；不提交生成、上传或重试转存请求。
+    updateNodeData(id, { url, status: 'loading', error: undefined, previewAttempt: (node.data.previewAttempt ?? 0) + 1 })
   }
 
   function mediaReady(id: string, dimensions: MediaDimensions) {
@@ -370,7 +369,6 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       failMedia(id)
       return
     }
-    clearLoadTimer(id)
     updateNodeData(id, { ...dimensions, status: 'ready' })
     if (uploadFiles.has(id)) saveUploadedNode(id)
   }
@@ -390,7 +388,6 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       const id = appendNode({ kind, name: file.name, url, origin: 'upload', status: 'loading' }, target)
       urls.set(id, url)
       uploadFiles.set(id, file)
-      loadTimers.set(id, setTimeout(() => failMedia(id), 30_000))
       index += 1
     }
     importNotice.value = rejected.length
@@ -407,13 +404,11 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     queuedUploads.clear()
     for (const controller of generationRequests.values()) controller.abort()
     generationRequests.clear()
-    for (const timer of loadTimers.values()) clearTimeout(timer)
     for (const url of urls.values()) URL.revokeObjectURL(url)
-    loadTimers.clear()
     urls.clear()
   })
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

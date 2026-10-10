@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { getPreviewSize, type MediaDimensions, type MediaNodeData } from '../canvas/media'
+import { getPreviewSize, previewRetryURL, type MediaDimensions, type MediaNodeData } from '../canvas/media'
 import type { ReferenceCandidateState } from '../canvas/useNodeReferences'
 import { generationStatusLabel } from '../canvas/generationStatus'
 
 const props = defineProps<{ data: MediaNodeData; selected: boolean; referenceState?: ReferenceCandidateState; hasReferences: boolean; isReferenceSource: boolean }>()
-const emit = defineEmits<{ loaded: [dimensions: MediaDimensions]; failed: []; retrySave: [] }>()
+const emit = defineEmits<{ loaded: [dimensions: MediaDimensions]; failed: []; retrySave: []; retryPreview: [] }>()
 const size = computed(() => getPreviewSize(props.data))
 const videoElement = ref<HTMLMediaElement | null>(null)
 const mediaLabel = computed(() => props.data.kind === 'audio' ? '音频' : '视频')
@@ -14,6 +14,40 @@ const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
 const playbackError = ref('')
+const previewSlow = ref(false)
+const canRetryPreview = computed(() => !!previewRetryURL(props.data))
+const previewURL = computed(() => {
+  const url = props.data.url
+  // 私有读取接口只按 key 取原素材；重试参数避免复用仍挂起的浏览器请求。
+  // 供应商临时签名地址保持原样，不能随意追加查询参数。
+  return url?.startsWith('/api/assets/content?') && props.data.previewAttempt
+    ? `${url}&previewAttempt=${props.data.previewAttempt}` : url
+})
+const slowMessage = computed(() => props.data.storage?.status === 'saved' ? '素材已保存，预览加载较慢。'
+  : props.data.origin === 'generated' ? '素材已生成，预览加载较慢。' : '预览加载较慢，请稍候。')
+let disposed = false
+
+watch(() => [props.data.status, props.data.url, props.data.previewAttempt], (_, __, onCleanup) => {
+  previewSlow.value = false
+  if (props.data.status !== 'loading' || !props.data.url) return
+  // 30 秒只提示慢，不终止请求；成功、失败、重试和节点卸载都会清理计时器。
+  const timer = setTimeout(() => { previewSlow.value = true }, 30_000)
+  onCleanup(() => clearTimeout(timer))
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  disposed = true
+  const video = videoElement.value
+  if (video) {
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
+  }
+})
+
+function previewFailed() {
+  if (!disposed) emit('failed')
+}
 
 function formatTime(seconds: number) {
   const total = Math.floor(seconds)
@@ -51,17 +85,20 @@ function seekVideo(event: Event) {
 }
 
 function imageLoaded(event: Event) {
+  if (disposed) return
   const image = event.currentTarget as HTMLImageElement
   emit('loaded', { width: image.naturalWidth, height: image.naturalHeight })
 }
 
 function videoLoaded(event: Event) {
+  if (disposed) return
   const video = event.currentTarget as HTMLVideoElement
   syncVideoTime()
   emit('loaded', { width: video.videoWidth, height: video.videoHeight, durationSeconds: duration.value })
 }
 
 function audioLoaded() {
+  if (disposed) return
   syncVideoTime()
   emit('loaded', { width: 0, height: 0, durationSeconds: duration.value })
 }
@@ -83,28 +120,28 @@ function audioLoaded() {
     </header>
 
     <div class="media-node-preview" :style="{ height: `${size.height}px` }" :aria-busy="data.status === 'loading' || data.generation?.status === 'generating'">
-      <template v-if="data.url">
+      <template v-if="data.url && data.status !== 'error'">
         <img
           v-if="data.kind === 'image'"
           class="media-content"
-          :src="data.url"
+          :src="previewURL"
           :alt="data.name"
           :draggable="false"
           @load="imageLoaded"
-          @error="emit('failed')"
+          @error="previewFailed"
           @dragstart.prevent
         />
         <video
           v-else-if="data.kind === 'video'"
           ref="videoElement"
           class="media-content"
-          :src="data.url"
+          :src="previewURL"
           :aria-label="data.name"
           tabindex="-1"
           playsinline
           preload="auto"
           @loadeddata="videoLoaded"
-          @error="emit('failed')"
+          @error="previewFailed"
           @play="isPlaying = true"
           @pause="isPlaying = false"
           @ended="isPlaying = false"
@@ -113,7 +150,7 @@ function audioLoaded() {
         />
         <template v-else>
           <div class="audio-art" aria-hidden="true"><span>♫</span><span>音频素材</span></div>
-          <audio ref="videoElement" :src="data.url" :aria-label="data.name" preload="metadata" @loadedmetadata="audioLoaded" @error="emit('failed')" @play="isPlaying = true" @pause="isPlaying = false" @ended="isPlaying = false" @timeupdate="syncVideoTime" @durationchange="syncVideoTime" />
+          <audio ref="videoElement" :src="previewURL" :aria-label="data.name" preload="metadata" @loadedmetadata="audioLoaded" @error="previewFailed" @play="isPlaying = true" @pause="isPlaying = false" @ended="isPlaying = false" @timeupdate="syncVideoTime" @durationchange="syncVideoTime" />
         </template>
         <!-- 画面交给节点拖动，只有独立控件接收播放和进度操作。 -->
         <div v-if="data.kind !== 'image' && data.status === 'ready'" class="video-controls">
@@ -153,8 +190,14 @@ function audioLoaded() {
         </svg>
         <svg v-else viewBox="0 0 64 64" aria-hidden="true"><path d="M19 9a4 4 0 0 1 6-3l29 22a5 5 0 0 1 0 8L25 58a4 4 0 0 1-6-3Z" /></svg>
       </div>
-      <div v-else-if="data.status === 'loading'" class="media-loading" role="status">正在读取…</div>
-      <p v-else-if="data.status === 'error'" class="media-error" role="alert">{{ data.error }}</p>
+      <div v-else-if="data.status === 'loading'" class="media-loading">
+        <p role="status">{{ previewSlow ? slowMessage : '正在读取…' }}</p>
+        <button v-if="previewSlow && canRetryPreview" type="button" class="preview-retry nodrag nopan" @click.stop="emit('retryPreview')" @pointerdown.stop @keydown.stop>重新加载预览</button>
+      </div>
+      <div v-else-if="data.status === 'error'" class="media-error">
+        <p role="alert">{{ data.error }}</p>
+        <button v-if="canRetryPreview" type="button" class="preview-retry nodrag nopan" @click.stop="emit('retryPreview')" @pointerdown.stop @keydown.stop>重新加载预览</button>
+      </div>
       <div v-if="data.generation?.status === 'generating'" class="media-generating" role="status">{{ generationStatusLabel(data.generation, data.kind === 'video' ? '视频' : '图片') }}</div>
       <span v-if="data.storage?.status === 'saving'" class="asset-status" role="status">保存中…</span>
       <div v-else-if="data.storage?.status === 'error'" class="asset-save-error nodrag nopan" @click.stop @pointerdown.stop @keydown.stop>
@@ -201,6 +244,10 @@ video.media-content { pointer-events: none; background: #171717; }
 .video-playback-error { position: absolute; inset: 10px 10px auto; margin: 0; padding: 8px; border-radius: 6px; background: #171717e6; color: #eed4d4; font-size: 12px; }
 .media-placeholder, .media-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .media-placeholder svg { width: 54px; height: 54px; fill: #555; }
-.media-loading { color: #adb1ba; font-size: 13px; background: #262626; }
-.media-error { display: flex; align-items: center; justify-content: center; height: 100%; margin: 0; padding: 24px; color: #d5b4b4; font-size: 13px; line-height: 1.8; text-align: center; }
+.media-loading { flex-direction: column; gap: 12px; padding: 24px; color: #adb1ba; font-size: 13px; background: #262626; text-align: center; }
+.media-error { display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; height: 100%; padding: 24px; color: #d5b4b4; font-size: 13px; line-height: 1.8; text-align: center; }
+.media-loading p, .media-error p { margin: 0; }
+.preview-retry { padding: 6px 12px; border: 1px solid #626873; border-radius: 6px; background: #34383f; color: #e0e4ec; font: inherit; cursor: pointer; pointer-events: auto; }
+.preview-retry:hover { background: #414752; }
+.preview-retry:focus-visible { outline: 2px solid #83adf5; outline-offset: 3px; }
 </style>
