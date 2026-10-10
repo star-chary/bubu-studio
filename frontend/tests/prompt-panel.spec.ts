@@ -24,7 +24,8 @@ test('点击两种空节点弹出输入框，放大恢复保留文字和选区�
   await image.click({ position: { x: 80, y: 80 } })
   const panel = page.getByRole('dialog', { name: '图片提示词' })
   const input = panel.getByRole('textbox', { name: '图片提示词' })
-  await expect(input).toBeFocused()
+  // 点击节点保留画布焦点，支持 Delete；进入输入区后才编辑文字。
+  await expect(page.getByRole('main')).toBeFocused()
   await expect(panel.getByRole('button', { name: /^图片参数，/ })).toBeVisible()
   const nodeBox = await image.boundingBox()
   const initialBox = await panel.boundingBox()

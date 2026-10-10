@@ -13,7 +13,7 @@ import type { CreditQuote } from '../api/credits'
 interface AcceptedGeneration { input: TaskInput; quote: CreditQuote; count?: ImageOptions['count'] }
 
 export function useMediaNodes(flowId: string, requestedId: string, temporary: boolean) {
-  const { nodes, addNodes, findNode, updateNodeData } = useVueFlow(flowId)
+  const { nodes, addNodes, removeNodes, findNode, updateNodeData } = useVueFlow(flowId)
   const importNotice = ref('')
   const urls = new Map<string, string>()
   const loadTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -46,6 +46,22 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     sequence = Math.max(sequence, ...nodes.value.map((node) => Number(/^(?:图片|视频)节点 (\d+)$/.exec(node.data.name)?.[1] ?? 0))) + 1
     appendNode({ kind, name: `${kind === 'image' ? '图片' : '视频'}节点 ${sequence}`, status: 'empty',
       ...(kind === 'video' ? { videoModel: VIDEO_MODEL, videoMode: 'reference' as const } : {}) }, position)
+  }
+
+  function deleteNodes(ids: string[]) {
+    removeNodes(ids)
+    for (const id of ids) {
+      clearLoadTimer(id)
+      uploadRequests.get(id)?.abort()
+      uploadFiles.delete(id)
+      queuedUploads.delete(id)
+      const queued = uploadQueue.indexOf(id)
+      if (queued !== -1) uploadQueue.splice(queued, 1)
+      const url = urls.get(id)
+      if (url) URL.revokeObjectURL(url)
+      urls.delete(id)
+    }
+    // 已提交的任务仍由服务端执行和结算；applyTask 会忽略已删除的节点。
   }
 
   function updatePrompt(id: string, parts: PromptPart[]) {
@@ -228,7 +244,12 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     const taskId = crypto.randomUUID()
     generationRequests.set(id, new AbortController())
     updateNodeData(id, { generation: { taskId, status: 'generating', prompt, model: input.model } })
-    try { await session.flush(); const task = await submitTask(taskId, { ...input, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion }, 'video'); if (!disposed) session.track(task, true) }
+    try {
+      await session.flush()
+      if (disposed || !findNode(id)) return
+      const task = await submitTask(taskId, { ...input, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion }, 'video')
+      if (!disposed) session.track(task, true)
+    }
     catch (error) { if (!disposed && findNode(id)) updateNodeData(id, { generation: { taskId, status: 'error', prompt, model: input.model, error: error instanceof Error ? error.message : '视频提交失败' } }) }
     finally { generationRequests.delete(id) }
   }
@@ -310,6 +331,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       uploadRequests.set(id, controller)
       updateNodeData(id, { storage: { status: 'saving' } })
       await session.flush()
+      if (disposed || controller.signal.aborted || !findNode(id)) return
       timeout = setTimeout(() => controller.abort(), 125_000)
       const asset = await uploadAsset(file, { canvasId: canvasId.value, nodeId: id }, controller.signal)
       if (disposed || !findNode(id)) return
@@ -393,5 +415,5 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

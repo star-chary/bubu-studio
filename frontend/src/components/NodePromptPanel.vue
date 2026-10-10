@@ -101,10 +101,9 @@ const layout = computed(() => {
   }
 })
 
-watch(() => props.nodeId, async () => {
+watch(() => props.nodeId, () => {
   expanded.value = false
-  await nextTick()
-  input.value?.focus()
+  // 点击节点先保留画布焦点以支持 Delete；点击输入区后才进入文字编辑。
 }, { immediate: true })
 
 watch(() => props.selectingReferences, async (selecting) => {

@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-10 节点删除（本地已验证，尚未发布）：节点右键菜单复用现有画布菜单，支持“删除”和选中后按 Delete；点击节点保留画布焦点，输入区和参考选择期间保护删除键。移除节点后清理上传、预览及关联引用，通过现有快照自动保存；已提交任务与云端素材保留。13/13 删除专项浏览器回归与类型检查通过，未运行其他功能回归。实现、数据流和验收边界见 [节点删除](./docs/node-deletion.md)。
+
 2026-10-09 图片参数更新（已随 `20261009T074301Z` 发布）：图片节点增加分辨率／比例／1、2、4 张弹层；Lite 显示 2K／3K／4K，Pro 显示 1K／1.5K／2K。设置按节点保存，后端按模型校验并映射到实际尺寸；批量保存额外节点后提交独立单图任务，每张独立结算，失败停止后续提交。Pro 低分辨率报价已更新，总积分随张数变化；无新表、迁移或第三方服务。独立 PostgreSQL 的 Go 全包测试、vet 与前端构建通过；99 项浏览器用例已完成验证（旧按钮数量断言更新后复测通过）。发布前完成数据库备份；正式 HTTPS 的真实 Chrome 已验证模型参数切换、总报价、保存刷新恢复、服务端非法参数拒绝和手机布局，临时账号与画布已清理。批量生成由本地模拟供应商验证，本次未调用付费模型。实现与验收边界见 [图片生成](./docs/image-generation.md)。
 
 2026-10-08 BuBu-后台管理：根目录 `admin/` 与 `frontend/`、`backend/` 并列。已实现管理员登录、用户查询／分页、测试积分发放与审计流水；新增角色／审计字段迁移 007 和服务器端初始化工具。Go／PostgreSQL、vet、前后端构建、管理端 6/6 与画布登录／积分 18/18 浏览器回归通过，真实隔离数据库链路验证重复提交仅发一次、画布读取新余额。已随 `20261008T055817Z` 发布到正式站点 `/admin/`，完成数据库备份、迁移和线上管理员初始化；正式 HTTPS 的真实浏览器已验证登录、用户查询、发放防重、审计、画布余额与权限，临时账号及测试积分已清理。未调用 Ark／OSS。见 [管理端说明](./docs/admin.md)。
@@ -102,7 +104,8 @@
 | `frontend/src/App.vue` | 按 URL 显示首页或指定画布，完整页面导航隔离会话，不引入路由库 |
 | `frontend/src/views/CanvasPage.vue` | 画布、点阵、固定界面、视口、菜单、文件选择器、当前编辑节点、参考选择事件分流及屏幕 / 画布坐标转换 |
 | `frontend/src/components/CanvasToolbar.vue` | 缩放比例、缩放按钮、重置操作 |
-| `frontend/src/components/CanvasContextMenu.vue` | 右键菜单两层内容、屏幕边缘定位和关闭；发出上传 / 创建节点事件 |
+| `frontend/src/components/CanvasContextMenu.vue` | 画布两层菜单与节点删除菜单、屏幕边缘定位和关闭；发出上传 / 创建 / 删除节点事件 |
+| `frontend/tests/node-deletion.spec.ts`、`docs/node-deletion.md` | 节点删除专项回归、输入保护、关联清理、保存恢复及上传／生成迟到响应边界 |
 | `frontend/src/components/MediaNode.vue` | 媒体预览、独立播放 / 进度控制、加载 / 错误、参考候选状态与连线端点 |
 | `frontend/src/components/NodePromptPanel.vue` | 提示词面板、参考 / 缩略图、文生图按钮 / 状态 / 错误、放大 / 恢复和焦点 |
 | `frontend/src/components/ImageModelSelect.vue` | 两个模型的下拉列表、选中状态、键盘 / 焦点、边缘定位与关闭 |
@@ -147,6 +150,7 @@
 - 改平移 / 缩放行为：`CanvasPage.vue` → `viewport.ts` → `tests/canvas.spec.ts`。
 - 改工具栏：`CanvasToolbar.vue` → `style.css`。
 - 改右键菜单：`CanvasContextMenu.vue` → `CanvasPage.vue` → `tests/canvas.spec.ts`。
+- 改节点删除：`docs/node-deletion.md` → `CanvasPage.vue` / `CanvasContextMenu.vue` → `useMediaNodes.ts` / `useNodeReferences.ts` / `useCanvasSession.ts` → `tests/node-deletion.spec.ts`。
 - 改节点显示：`MediaNode.vue` → `media.ts` → `tests/media-nodes.spec.ts`。
 - 改提示词输入面板：`NodePromptPanel.vue` → `CanvasPage.vue` → `useMediaNodes.ts` → `tests/prompt-panel.spec.ts`。
 - 改参考规则 / 引用数据：`useNodeReferences.ts` → `media.ts` → `CanvasPage.vue` → `tests/references.spec.ts`。

@@ -249,7 +249,7 @@ function outside(event: PointerEvent) {
 watch(() => props.nodeId, () => {
   current.value = draftParts({ prompt: props.modelValue, promptParts: props.parts })
   undo = []; redo = []; before = undefined; composing = false; bookmark = { anchor: 0, focus: 0 }; closeMenu()
-  void nextTick(() => { render(); focus() })
+  void nextTick(render)
 }, { immediate: true })
 watch(() => [props.modelValue, props.parts], () => {
   const parts = draftParts({ prompt: props.modelValue, promptParts: props.parts })

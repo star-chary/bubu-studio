@@ -2,8 +2,8 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { MediaKind } from '../canvas/media'
 
-const props = defineProps<{ position: { x: number; y: number } }>()
-const emit = defineEmits<{ close: []; upload: []; addNode: [kind: Exclude<MediaKind, 'audio'>] }>()
+const props = defineProps<{ position: { x: number; y: number }; target?: 'canvas' | 'node' }>()
+const emit = defineEmits<{ close: []; upload: []; addNode: [kind: Exclude<MediaKind, 'audio'>]; deleteNode: [] }>()
 
 const panel = ref<HTMLDivElement | null>(null)
 const screen = ref<'main' | 'nodes'>('main')
@@ -21,7 +21,7 @@ async function placePanel() {
 }
 
 watch(() => props.position, () => { screen.value = 'main' }, { flush: 'sync' })
-watch([() => props.position, screen], async () => {
+watch([() => props.position, () => props.target, screen], async () => {
   await placePanel()
   panel.value?.focus({ preventScroll: true })
 }, { immediate: true })
@@ -63,7 +63,7 @@ onBeforeUnmount(() => {
     ref="panel"
     class="canvas-context-menu"
     role="menu"
-    :aria-label="screen === 'main' ? '画布菜单' : '添加节点'"
+    :aria-label="target === 'node' ? '节点菜单' : screen === 'main' ? '画布菜单' : '添加节点'"
     :style="{ left: `${placement.x}px`, top: `${placement.y}px` }"
     tabindex="-1"
     @keydown="handleKeydown"
@@ -72,7 +72,16 @@ onBeforeUnmount(() => {
     @mousedown.stop
     @wheel.stop.prevent
   >
-    <template v-if="screen === 'main'">
+    <template v-if="target === 'node'">
+      <button type="button" role="menuitem" tabindex="-1" aria-keyshortcuts="Delete" @click="emit('deleteNode')">
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M3 5h14M7 5V3h6v2M5 5l1 12h8l1-12M8 8v6m4-6v6" />
+        </svg>
+        删除
+        <kbd aria-hidden="true">Delete</kbd>
+      </button>
+    </template>
+    <template v-else-if="screen === 'main'">
       <button type="button" role="menuitem" tabindex="-1" @click="emit('upload')">上传</button>
       <button type="button" role="menuitem" tabindex="-1" @click="screen = 'nodes'">添加节点</button>
     </template>
@@ -154,5 +163,13 @@ onBeforeUnmount(() => {
   stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.canvas-context-menu kbd {
+  margin-left: auto;
+  color: #919191;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 400;
 }
 </style>

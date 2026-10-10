@@ -20,8 +20,8 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 // 画布和工具栏共享这个实例，位置与缩放只在 Vue Flow 中维护。
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
-const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate } = useVueFlow(flowId)
-const { nodes, session, importNotice, createEmptyNode, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate, getSelectedNodes, addSelectedNodes, removeSelectedNodes } = useVueFlow(flowId)
+const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const leaving = ref(false)
@@ -133,7 +133,8 @@ const promptAnchor = computed(() => {
     height: node.dimensions.height * viewport.value.zoom,
   }
 })
-const contextMenuPosition = ref<{ x: number; y: number } | null>(null)
+const canvasElement = ref<HTMLElement | null>(null)
+const contextMenu = ref<{ position: XYPosition; nodeId?: string } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 let pendingUploadPosition: XYPosition | null = null
 
@@ -141,11 +142,12 @@ function openPrompt({ event, node }: NodeMouseEvent) {
   // 播放和进度控件有自己的操作，不把这些点击当成编辑节点。
   if (event.target instanceof Element && event.target.closest('button, input, textarea, a')) return
   if (node.type !== 'media') return
-  contextMenuPosition.value = null
+  contextMenu.value = null
   if (isSelecting.value) {
     selectReference(node.id)
     return
   }
+  canvasElement.value?.focus({ preventScroll: true })
   // 上传素材用于预览和参考，只有生成节点打开提示词面板。
   if (node.data.kind === 'audio' || node.data.origin === 'upload') { activePromptId.value = null; return }
   activePromptId.value = node.id
@@ -181,17 +183,41 @@ function endSelectionOnEscape(event: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', endSelectionOnEscape, true))
 onBeforeUnmount(() => document.removeEventListener('keydown', endSelectionOnEscape, true))
 
+function deleteCanvasNodes(ids: string[]) {
+  if (!ready.value || auth.status !== 'authenticated' || !ids.length) return
+  if (activePromptId.value && ids.includes(activePromptId.value)) activePromptId.value = null
+  contextMenu.value = null
+  deleteNodes(ids)
+  canvasElement.value?.focus({ preventScroll: true })
+}
+
+function deleteSelectedNodes(event: KeyboardEvent) {
+  if (event.key !== 'Delete' || event.defaultPrevented || event.isComposing || event.repeat
+    || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || isSelecting.value
+    || document.querySelector('dialog[open]')) return
+  const target = event.target
+  if (target instanceof Element && (target.closest('input, textarea, select, [contenteditable], [role="textbox"], [role="dialog"]')
+    || (target.closest('button, a') && !target.closest('.canvas-context-menu')))) return
+  const ids = getSelectedNodes.value.filter((node) => node.type === 'media').map((node) => node.id)
+  if (!ids.length || !ready.value || auth.status !== 'authenticated') return
+  event.preventDefault()
+  deleteCanvasNodes(ids)
+}
+
+onMounted(() => document.addEventListener('keydown', deleteSelectedNodes))
+onBeforeUnmount(() => document.removeEventListener('keydown', deleteSelectedNodes))
+
 function addNode(kind: Exclude<MediaKind, 'audio'>) {
-  if (!contextMenuPosition.value) return
-  createEmptyNode(kind, screenToFlowCoordinate(contextMenuPosition.value))
-  contextMenuPosition.value = null
+  if (!contextMenu.value || contextMenu.value.nodeId) return
+  createEmptyNode(kind, screenToFlowCoordinate(contextMenu.value.position))
+  contextMenu.value = null
 }
 
 function chooseFiles() {
-  if (!contextMenuPosition.value || !fileInput.value) return
+  if (!contextMenu.value || contextMenu.value.nodeId || !fileInput.value) return
   // 打开文件选择器前保存画布坐标，异步选完文件仍落在原来的创建位置。
-  pendingUploadPosition = screenToFlowCoordinate(contextMenuPosition.value)
-  contextMenuPosition.value = null
+  pendingUploadPosition = screenToFlowCoordinate(contextMenu.value.position)
+  contextMenu.value = null
   fileInput.value.value = ''
   fileInput.value.click()
 }
@@ -209,7 +235,18 @@ function openContextMenu(event: MouseEvent) {
   event.preventDefault()
   if (isSelecting.value || !ready.value) return
   activePromptId.value = null
-  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  removeSelectedNodes(getSelectedNodes.value)
+  contextMenu.value = { position: { x: event.clientX, y: event.clientY } }
+}
+
+function openNodeContextMenu({ event, node }: NodeMouseEvent) {
+  if (!(event instanceof MouseEvent)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (isSelecting.value || !ready.value || node.type !== 'media') return
+  activePromptId.value = null
+  addSelectedNodes([node])
+  contextMenu.value = { nodeId: node.id, position: { x: event.clientX, y: event.clientY } }
 }
 
 function resetViewport() {
@@ -218,7 +255,7 @@ function resetViewport() {
 </script>
 
 <template>
-  <main class="canvas-page" aria-label="帧间画布" aria-describedby="canvas-instructions">
+  <main ref="canvasElement" class="canvas-page" tabindex="-1" aria-label="帧间画布" aria-describedby="canvas-instructions">
     <VueFlow
       :id="flowId"
       :edges="referenceEdges"
@@ -239,6 +276,7 @@ function resetViewport() {
       :prevent-scrolling="true"
       :disable-keyboard-a11y="true"
       @pane-context-menu="openContextMenu"
+      @node-context-menu="openNodeContextMenu"
       @node-click="openPrompt"
       @node-drag-start="closePrompt"
       @pane-click="closePrompt"
@@ -353,11 +391,13 @@ function resetViewport() {
       @close="closePrompt"
     />
     <CanvasContextMenu
-      v-if="contextMenuPosition && auth.status === 'authenticated'"
-      :position="contextMenuPosition"
-      @close="contextMenuPosition = null"
+      v-if="contextMenu && auth.status === 'authenticated'"
+      :position="contextMenu.position"
+      :target="contextMenu.nodeId ? 'node' : 'canvas'"
+      @close="contextMenu = null"
       @upload="chooseFiles"
       @add-node="addNode"
+      @delete-node="contextMenu?.nodeId && deleteCanvasNodes([contextMenu.nodeId])"
     />
     <input ref="fileInput" class="local-file-input" type="file" accept="image/*,video/*,audio/mpeg,audio/wav,.mp3,.wav" multiple aria-label="选择本地图片、视频或音频" @change="filesSelected" @cancel="pendingUploadPosition = null" />
     <div v-if="importNotice" class="import-notice" role="alert">
