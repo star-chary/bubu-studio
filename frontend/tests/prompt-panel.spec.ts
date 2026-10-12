@@ -60,6 +60,7 @@ test('点击两种空节点弹出输入框，放大恢复保留文字和选区�
   await videoInput.fill('镜头缓慢向前移动。')
   await image.click({ position: { x: 80, y: 80 } })
   await expect(input).toHaveText(draft, { useInnerText: true })
+  await input.focus()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await video.click({ position: { x: 80, y: 80 } })
@@ -116,25 +117,40 @@ test('上传图片和视频不打开提示词框，切换时关闭生成面板�
   await expect(page.getByRole('menu')).toBeVisible()
 })
 
-test('窗口边缘和窄屏下输入框不越界，放大后可滚动长文本且不缩放画布', async ({ page }, testInfo) => {
+test('窄屏与缩放下输入框始终在节点下方，允许底部裁切，放大仍可滚动文字', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
   await addNode(page, '图片', 340, 620)
   await page.mouse.click(350, 670)
   const panel = page.getByRole('dialog', { name: '图片提示词' })
-  const input = panel.getByRole('textbox')
-  await expect(input).toBeVisible()
-
-  async function expectWithinWindow(width: number, height: number) {
+  const edgeNode = page.getByRole('article', { name: '图片节点 1', exact: true })
+  async function expectBelowNode(node: ReturnType<Page['locator']>, width: number) {
     await expect.poll(async () => {
       const box = await panel.boundingBox()
-      return !!box && box.x >= 16 && box.y >= 16 && box.x + box.width <= width - 16 && box.y + box.height <= height - 16
+      const nodeBox = await node.boundingBox()
+      return !!box && !!nodeBox && box.x >= 16 && box.x + box.width <= width - 16 && Math.abs(box.y - nodeBox.y - nodeBox.height - 12) < 1
     }).toBe(true)
   }
 
-  await expectWithinWindow(375, 812)
+  await expectBelowNode(edgeNode, 375)
+  expect((await panel.boundingBox())!.y).toBeGreaterThan(812)
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole('button', { name: '缩小画布', exact: true }).click()
+    const transform = await page.locator('.vue-flow__transformationpane').getAttribute('style')
+    await edgeNode.click({ position: { x: 10, y: 50 } })
+    await expectBelowNode(edgeNode, 375)
+    expect(await page.locator('.vue-flow__transformationpane').getAttribute('style')).toBe(transform)
+    const box = (await panel.boundingBox())!
+    expect(box.y + box.height).toBeGreaterThan(812)
+  }
+  // 创建一个靠上的节点，让输入区可交互；不要求画布自动移动来容纳面板。
+  await addNode(page, '图片', 20, 110)
+  const upperNode = page.getByRole('article', { name: '图片节点 2', exact: true })
+  await upperNode.click({ position: { x: 35, y: 55 } })
+  const input = panel.getByRole('textbox')
+  await expectBelowNode(upperNode, 375)
   await panel.getByRole('button', { name: '放大输入框', exact: true }).click()
-  await expectWithinWindow(375, 812)
+  await expectBelowNode(upperNode, 375)
   const text = Array.from({ length: 50 }, (_, index) => `第 ${index + 1} 行：描述画面中的细节。`).join('\n')
   await input.fill(text)
   await input.press('Control+Home')
@@ -145,8 +161,10 @@ test('窗口边缘和窄屏下输入框不越界，放大后可滚动长文本�
   expect(await page.locator('.vue-flow__transformationpane').getAttribute('style')).toBe(viewport)
   await page.screenshot({ path: testInfo.outputPath('prompt-panel-mobile.png') })
   await page.setViewportSize({ width: 320, height: 480 })
-  await expectWithinWindow(320, 480)
+  await expectBelowNode(upperNode, 320)
+  const cropped = (await panel.boundingBox())!
+  expect(cropped.y + cropped.height).toBeGreaterThan(480)
   await panel.getByRole('button', { name: '恢复输入框大小' }).click()
-  await expectWithinWindow(320, 480)
+  await expectBelowNode(upperNode, 320)
   await expect(input).toHaveText(text, { useInnerText: true })
 })

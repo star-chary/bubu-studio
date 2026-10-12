@@ -7,12 +7,15 @@ import { auth } from '../auth/session'
 import AccountControl from '../components/AccountControl.vue'
 import CanvasToolbar from '../components/CanvasToolbar.vue'
 import MediaNode from '../components/MediaNode.vue'
+import NodeMediaToolbar from '../components/NodeMediaToolbar.vue'
+import MediaPreviewDialog from '../components/MediaPreviewDialog.vue'
 import NodePromptPanel from '../components/NodePromptPanel.vue'
 import ReferenceSelectionBar from '../components/ReferenceSelectionBar.vue'
 import TaskHistory from '../components/TaskHistory.vue'
 import { useMediaNodes } from '../canvas/useMediaNodes'
 import { useNodeReferences } from '../canvas/useNodeReferences'
 import type { MediaKind } from '../canvas/media'
+import { mediaSource } from '../canvas/mediaActions'
 import { DEFAULT_IMAGE_MODEL, normalizeImageOptions } from '../models/imageModels'
 import { INITIAL_VIEWPORT, MAX_ZOOM, MIN_ZOOM } from '../canvas/viewport'
 import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../api/credits'
@@ -61,8 +64,20 @@ async function prepareLogout() {
   return true
 }
 const activePromptId = ref<string | null>(null)
-watch(() => auth.status, (status) => { if (status !== 'authenticated') { activePromptId.value = null; leaveDialog.value?.close() } })
+const activeMediaId = ref<string | null>(null)
+const previewNodeId = ref<string | null>(null)
+watch(() => auth.status, (status) => {
+  if (status !== 'authenticated') {
+    activePromptId.value = null
+    activeMediaId.value = null
+    previewNodeId.value = null
+    leaveDialog.value?.close()
+  }
+})
 const activePromptNode = computed(() => nodes.value.find((node) => node.id === activePromptId.value))
+const activeMediaNode = computed(() => nodes.value.find((node) => node.id === activeMediaId.value))
+const previewNode = computed(() => nodes.value.find((node) => node.id === previewNodeId.value))
+const fullscreenSource = computed(() => previewNode.value ? mediaSource(previewNode.value.data) : undefined)
 const activeReferences = computed(() => activePromptId.value ? referencesFor(activePromptId.value) : [])
 const quoteRequest = computed(() => {
   const node = activePromptNode.value
@@ -124,15 +139,16 @@ async function generateActiveNode() {
   if (quoteRequest.value?.key === request.key) refreshQuote()
 }
 const referenceSources = computed(() => new Set(referenceEdges.value.map((edge) => edge.source)))
-const promptAnchor = computed(() => {
-  const node = activePromptNode.value
+function nodeAnchor(node: typeof activePromptNode.value) {
   if (!node) return null
   return {
     ...flowToScreenCoordinate(node.computedPosition),
     width: node.dimensions.width * viewport.value.zoom,
     height: node.dimensions.height * viewport.value.zoom,
   }
-})
+}
+const promptAnchor = computed(() => nodeAnchor(activePromptNode.value))
+const mediaAnchor = computed(() => nodeAnchor(activeMediaNode.value))
 const canvasElement = ref<HTMLElement | null>(null)
 const contextMenu = ref<{ position: XYPosition; nodeId?: string } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -148,6 +164,7 @@ function openPrompt({ event, node }: NodeMouseEvent) {
     return
   }
   canvasElement.value?.focus({ preventScroll: true })
+  activeMediaId.value = node.id
   // 上传素材用于预览和参考，只有生成节点打开提示词面板。
   if (node.data.kind === 'audio' || node.data.origin === 'upload') { activePromptId.value = null; return }
   activePromptId.value = node.id
@@ -155,6 +172,12 @@ function openPrompt({ event, node }: NodeMouseEvent) {
 
 function closePrompt() {
   if (!isSelecting.value) activePromptId.value = null
+}
+
+function closeNodeTools() {
+  if (isSelecting.value) return
+  activePromptId.value = null
+  activeMediaId.value = null
 }
 
 function selectReferences() {
@@ -170,6 +193,7 @@ function returnToNode() {
   finishSelection()
   if (!node) return
   activePromptId.value = node.id
+  activeMediaId.value = node.id
   void setCenter(node.computedPosition.x + node.dimensions.width / 2, node.computedPosition.y + node.dimensions.height / 2, { zoom: viewport.value.zoom })
 }
 
@@ -186,6 +210,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', endSelectionOnEsca
 function deleteCanvasNodes(ids: string[]) {
   if (!ready.value || auth.status !== 'authenticated' || !ids.length) return
   if (activePromptId.value && ids.includes(activePromptId.value)) activePromptId.value = null
+  if (activeMediaId.value && ids.includes(activeMediaId.value)) activeMediaId.value = null
+  if (previewNodeId.value && ids.includes(previewNodeId.value)) previewNodeId.value = null
   contextMenu.value = null
   deleteNodes(ids)
   canvasElement.value?.focus({ preventScroll: true })
@@ -235,6 +261,7 @@ function openContextMenu(event: MouseEvent) {
   event.preventDefault()
   if (isSelecting.value || !ready.value) return
   activePromptId.value = null
+  activeMediaId.value = null
   removeSelectedNodes(getSelectedNodes.value)
   contextMenu.value = { position: { x: event.clientX, y: event.clientY } }
 }
@@ -245,6 +272,7 @@ function openNodeContextMenu({ event, node }: NodeMouseEvent) {
   event.stopPropagation()
   if (isSelecting.value || !ready.value || node.type !== 'media') return
   activePromptId.value = null
+  activeMediaId.value = null
   addSelectedNodes([node])
   contextMenu.value = { nodeId: node.id, position: { x: event.clientX, y: event.clientY } }
 }
@@ -279,11 +307,11 @@ function resetViewport() {
       @node-context-menu="openNodeContextMenu"
       @node-click="openPrompt"
       @node-drag-start="closePrompt"
-      @pane-click="closePrompt"
+      @pane-click="closeNodeTools"
     >
       <Background :gap="24" :size="1" pattern-color="#393c43" />
       <template #node-media="{ id, data, selected }">
-        <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
+        <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :previewing="previewNodeId === id" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
       </template>
     </VueFlow>
 
@@ -347,6 +375,21 @@ function resetViewport() {
       :feedback="feedback"
       @return-to-node="returnToNode"
       @close="finishSelection"
+    />
+    <NodeMediaToolbar
+      v-if="activeMediaNode && mediaAnchor && !isSelecting && !contextMenu && auth.status === 'authenticated'"
+      :key="activeMediaNode.id"
+      :data="activeMediaNode.data"
+      :anchor="mediaAnchor"
+      @preview="previewNodeId = activeMediaNode.id"
+    />
+    <MediaPreviewDialog
+      v-if="previewNode && fullscreenSource && auth.status === 'authenticated'"
+      :key="`${previewNode.id}:${fullscreenSource}`"
+      :name="previewNode.data.name"
+      :kind="previewNode.data.kind"
+      :url="fullscreenSource"
+      @close="previewNodeId = null"
     />
     <NodePromptPanel
       v-if="activePromptNode && promptAnchor && auth.status === 'authenticated'"

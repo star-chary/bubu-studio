@@ -5,7 +5,7 @@ import { getPreviewSize, previewRetryURL, type MediaDimensions, type MediaNodeDa
 import type { ReferenceCandidateState } from '../canvas/useNodeReferences'
 import { generationStatusLabel } from '../canvas/generationStatus'
 
-const props = defineProps<{ data: MediaNodeData; selected: boolean; referenceState?: ReferenceCandidateState; hasReferences: boolean; isReferenceSource: boolean }>()
+const props = defineProps<{ data: MediaNodeData; selected: boolean; previewing?: boolean; referenceState?: ReferenceCandidateState; hasReferences: boolean; isReferenceSource: boolean }>()
 const emit = defineEmits<{ loaded: [dimensions: MediaDimensions]; failed: []; retrySave: []; retryPreview: [] }>()
 const size = computed(() => getPreviewSize(props.data))
 const videoElement = ref<HTMLMediaElement | null>(null)
@@ -26,6 +26,9 @@ const previewURL = computed(() => {
 const slowMessage = computed(() => props.data.storage?.status === 'saved' ? '素材已保存，预览加载较慢。'
   : props.data.origin === 'generated' ? '素材已生成，预览加载较慢。' : '预览加载较慢，请稍候。')
 let disposed = false
+
+// 全屏播放器接管播放，避免同一素材在画布和预览层同时发声。
+watch(() => props.previewing, (previewing) => { if (previewing) videoElement.value?.pause() })
 
 watch(() => [props.data.status, props.data.url, props.data.previewAttempt], (_, __, onCleanup) => {
   previewSlow.value = false

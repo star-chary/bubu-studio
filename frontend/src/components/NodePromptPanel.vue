@@ -88,14 +88,12 @@ const layout = computed(() => {
   const imageHeight = (props.references.length ? 282 : 222) + (windowSize.value.width <= 600 ? 38 : 0)
   const height = Math.min(expanded.value ? 468 : props.kind === 'video' ? videoHeight + 28 : imageHeight, windowSize.value.height - margin * 2)
   const maxX = windowSize.value.width - width - margin
-  const maxY = windowSize.value.height - height - margin
   const below = props.anchor.y + props.anchor.height + 12
-  const above = props.anchor.y - height - 12
-  const x = expanded.value ? (windowSize.value.width - width) / 2 : props.anchor.x + (props.anchor.width - width) / 2
-  const y = expanded.value ? (windowSize.value.height - height) / 2 : below <= maxY ? below : above
+  const x = props.anchor.x + (props.anchor.width - width) / 2
   return {
     left: `${Math.max(margin, Math.min(x, maxX))}px`,
-    top: `${Math.max(margin, Math.min(y, maxY))}px`,
+    // 始终跟在节点下方；下边缘可被视口裁切，不翻转也不移动画布。
+    top: `${below}px`,
     width: `${width}px`,
     height: `${height}px`,
   }
@@ -133,6 +131,7 @@ async function toggleExpanded() {
 
 function closeOnOutside(event: PointerEvent) {
   if (props.selectingReferences) return
+  if (event.target instanceof Element && event.target.closest('[data-node-tools], [data-media-preview]')) return
   if (event.target instanceof Node && !panel.value?.contains(event.target)) emit('close')
 }
 
