@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Background } from '@vue-flow/background'
-import { useVueFlow, VueFlow, type NodeMouseEvent, type XYPosition } from '@vue-flow/core'
+import { useVueFlow, VueFlow, type NodeDragEvent, type NodeMouseEvent, type XYPosition } from '@vue-flow/core'
 import CanvasContextMenu from '../components/CanvasContextMenu.vue'
 import { auth } from '../auth/session'
 import AccountControl from '../components/AccountControl.vue'
 import CanvasToolbar from '../components/CanvasToolbar.vue'
 import MediaNode from '../components/MediaNode.vue'
 import NodeMediaToolbar from '../components/NodeMediaToolbar.vue'
+import NodeAlignmentGuides from '../components/NodeAlignmentGuides.vue'
 import MediaPreviewDialog from '../components/MediaPreviewDialog.vue'
 import NodePromptPanel from '../components/NodePromptPanel.vue'
 import ReferenceSelectionBar from '../components/ReferenceSelectionBar.vue'
 import TaskHistory from '../components/TaskHistory.vue'
 import { useMediaNodes } from '../canvas/useMediaNodes'
 import { useNodeReferences } from '../canvas/useNodeReferences'
+import { useNodeAlignment } from '../canvas/useNodeAlignment'
 import type { MediaKind } from '../canvas/media'
 import { mediaSource } from '../canvas/mediaActions'
 import { DEFAULT_IMAGE_MODEL, normalizeImageOptions } from '../models/imageModels'
@@ -27,6 +29,8 @@ const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinat
 const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
+const { guides: alignmentGuides, start: startAlignment, drag: alignNode, stop: stopAlignment } = useNodeAlignment(flowId,
+  computed(() => ready.value && !isSelecting.value && auth.status === 'authenticated'))
 const leaving = ref(false)
 const leaveError = ref('')
 const leaveDialog = ref<HTMLDialogElement | null>(null)
@@ -174,6 +178,11 @@ function closePrompt() {
   if (!isSelecting.value) activePromptId.value = null
 }
 
+function startNodeDrag(event: NodeDragEvent) {
+  closePrompt()
+  startAlignment(event)
+}
+
 function closeNodeTools() {
   if (isSelecting.value) return
   activePromptId.value = null
@@ -306,7 +315,9 @@ function resetViewport() {
       @pane-context-menu="openContextMenu"
       @node-context-menu="openNodeContextMenu"
       @node-click="openPrompt"
-      @node-drag-start="closePrompt"
+      @node-drag-start="startNodeDrag"
+      @node-drag="alignNode"
+      @node-drag-stop="stopAlignment"
       @pane-click="closeNodeTools"
     >
       <Background :gap="24" :size="1" pattern-color="#393c43" />
@@ -314,6 +325,7 @@ function resetViewport() {
         <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :previewing="previewNodeId === id" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
       </template>
     </VueFlow>
+    <NodeAlignmentGuides :guides="alignmentGuides" :viewport="viewport" />
 
     <!-- 固定界面与可变换画布分层，工具栏不会跟随视口缩放或触发拖动。 -->
     <header class="canvas-header">

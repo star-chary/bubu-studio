@@ -1,5 +1,7 @@
 # 项目地图
 
+2026-10-16 节点对齐（本地验证通过）：拖动媒体节点时，按素材展示框的边缘和中心显示参考线并吸附，排除标题、工具框和提示词输入框。按屏幕距离统一缩放后的吸附手感，沿用现有坐标自动保存；无后端接口或数据库变更。14 项对齐专项与 4 项相关拖动 / 播放 / 引用回归通过，类型检查和生产构建通过；保存接口与媒体使用模拟数据及本地样本，未写入生产。线上状态与实现见 [节点展示框吸附对齐](./docs/node-alignment.md)。
+
 2026-10-13 节点素材工具（已随 `20261012T161952Z` 发布，功能提交 `0c6c79e`）：任意媒体节点选中后显示上方“下载 / 放大”，支持下载原文件和页面全屏预览；空节点禁用按钮。输入框保留原有展示条件，上传节点不显示；生成节点输入框始终在节点下方，允许底部裁切。工具、提示词和预览各自维护页面状态，不新增后端接口或数据库变更。本地与正式 HTTPS 实际前端产物均通过 8/8 项相关浏览器回归，类型检查、构建和敏感信息扫描通过；使用本地样本和模拟接口，未调用付费模型或写入生产业务数据。发布复用后端和管理端，后端进程不变，保留上一版用于回退。实现与边界见 [节点素材工具](./docs/node-media-tools.md)。
 
 2026-10-11 预览恢复（已随 `20261010T161923Z` 发布，功能提交 `4ba1fcc`）：图片、视频读取超过 30 秒只提示加载较慢，保留原请求；慢加载与失败状态新增“重新加载预览”，仅重新读取已有素材。旧预览迟到事件不影响重试后的结果，重试次数不写入画布。本地与线上实际前端产物均通过 10/10 项针对性浏览器回归，类型检查及构建通过；接口使用模拟数据，未写入生产业务数据或调用方舟／OSS。发布复用后端与管理端，后端进程不变，保留上一版用于回退。实现与验证边界见 [素材预览等待与重试](./docs/media-preview.md)。
@@ -111,6 +113,8 @@
 | `frontend/src/components/CanvasContextMenu.vue` | 画布两层菜单与节点删除菜单、屏幕边缘定位和关闭；发出上传 / 创建 / 删除节点事件 |
 | `frontend/tests/node-deletion.spec.ts`、`docs/node-deletion.md` | 节点删除专项回归、输入保护、关联清理、保存恢复及上传／生成迟到响应边界 |
 | `frontend/src/components/MediaNode.vue` | 媒体预览、独立播放 / 进度控制、慢加载提示与重新加载、错误、参考候选状态与连线端点 |
+| `frontend/src/canvas/nodeAlignment.ts`、`useNodeAlignment.ts`、`frontend/src/components/NodeAlignmentGuides.vue` | 展示框锚点匹配、拖动吸附 / 释放、参考线及临时状态清理 |
+| `frontend/tests/node-alignment.spec.ts`、`docs/node-alignment.md` | 对齐专项回归、坐标与缩放机制、保存恢复和验收边界 |
 | `frontend/src/components/NodeMediaToolbar.vue`、`MediaPreviewDialog.vue`、`frontend/src/canvas/mediaActions.ts` | 节点上方下载 / 放大工具、原素材下载、页面全屏预览与播放清理 |
 | `frontend/tests/node-media-tools.spec.ts`、`docs/node-media-tools.md` | 素材工具专项回归、下载字节验证、上传 / 生成节点交互边界和数据流 |
 | `frontend/src/components/NodePromptPanel.vue` | 提示词面板、参考 / 缩略图、文生图按钮 / 状态 / 错误、放大 / 恢复和焦点 |
@@ -158,6 +162,7 @@
 - 改右键菜单：`CanvasContextMenu.vue` → `CanvasPage.vue` → `tests/canvas.spec.ts`。
 - 改节点删除：`docs/node-deletion.md` → `CanvasPage.vue` / `CanvasContextMenu.vue` → `useMediaNodes.ts` / `useNodeReferences.ts` / `useCanvasSession.ts` → `tests/node-deletion.spec.ts`。
 - 改节点显示：`MediaNode.vue` → `media.ts` → `tests/media-nodes.spec.ts`。
+- 改拖动吸附 / 对齐参考线：`docs/node-alignment.md` → `media.ts` / `nodeAlignment.ts` / `useNodeAlignment.ts` → `NodeAlignmentGuides.vue` / `CanvasPage.vue` → `tests/node-alignment.spec.ts`。
 - 改预览慢加载 / 重试：`docs/media-preview.md` → `MediaNode.vue` / `useMediaNodes.ts` / `CanvasPage.vue` → `tests/preview-retry.spec.ts`。
 - 改提示词输入面板：`NodePromptPanel.vue` → `CanvasPage.vue` → `useMediaNodes.ts` → `tests/prompt-panel.spec.ts`。
 - 改参考规则 / 引用数据：`useNodeReferences.ts` → `media.ts` → `CanvasPage.vue` → `tests/references.spec.ts`。

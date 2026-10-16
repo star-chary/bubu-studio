@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { getPreviewSize, previewRetryURL, type MediaDimensions, type MediaNodeData } from '../canvas/media'
+import { getPreviewSize, MEDIA_NODE_HEADER_HEIGHT, previewRetryURL, type MediaDimensions, type MediaNodeData } from '../canvas/media'
 import type { ReferenceCandidateState } from '../canvas/useNodeReferences'
 import { generationStatusLabel } from '../canvas/generationStatus'
 
@@ -109,9 +109,9 @@ function audioLoaded() {
 
 <template>
   <article class="media-node" :class="{ 'is-selected': selected, [`reference-${referenceState}`]: referenceState }" :style="{ width: `${size.width}px` }" :aria-label="data.name">
-    <Handle v-if="data.kind !== 'audio'" id="reference-in" type="target" :position="Position.Left" :connectable="false" class="reference-handle" :class="{ 'is-visible': hasReferences || referenceState === 'target' }" :style="{ top: `${28 + size.height / 2}px` }" />
-    <Handle id="reference-out" type="source" :position="Position.Right" :connectable="false" class="reference-handle" :class="{ 'is-visible': isReferenceSource || referenceState === 'available' || referenceState === 'chosen' }" :style="{ top: `${28 + size.height / 2}px` }" />
-    <header class="media-node-header">
+    <Handle v-if="data.kind !== 'audio'" id="reference-in" type="target" :position="Position.Left" :connectable="false" class="reference-handle" :class="{ 'is-visible': hasReferences || referenceState === 'target' }" :style="{ top: `${MEDIA_NODE_HEADER_HEIGHT + size.height / 2}px` }" />
+    <Handle id="reference-out" type="source" :position="Position.Right" :connectable="false" class="reference-handle" :class="{ 'is-visible': isReferenceSource || referenceState === 'available' || referenceState === 'chosen' }" :style="{ top: `${MEDIA_NODE_HEADER_HEIGHT + size.height / 2}px` }" />
+    <header class="media-node-header" :style="{ height: `${MEDIA_NODE_HEADER_HEIGHT}px` }">
       <svg v-if="data.kind === 'image'" viewBox="0 0 20 20" aria-hidden="true">
         <path d="M3 2h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm0 13h14l-4-5-3 3-3-5-4 7Z" fill-rule="evenodd" />
         <circle cx="13" cy="6" r="2" />
@@ -220,7 +220,7 @@ function audioLoaded() {
 .media-node { user-select: none; cursor: grab; }
 .media-node:active { cursor: grabbing; }
 .media-generating { position: absolute; inset: 0; display: grid; place-items: center; background: #202020df; color: #d7d7d7; font-size: 13px; pointer-events: none; }
-.media-node-header { display: flex; align-items: center; gap: 5px; height: 28px; color: #989898; font-size: 13px; }
+.media-node-header { display: flex; align-items: center; gap: 5px; color: #989898; font-size: 13px; }
 .media-node-header svg { flex: none; width: 15px; height: 15px; fill: currentColor; }
 .media-node-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .media-node-dimensions { flex: none; margin-left: auto; padding-left: 12px; color: #868686; font-variant-numeric: tabular-nums; }

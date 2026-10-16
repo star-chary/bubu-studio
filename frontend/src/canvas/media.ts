@@ -5,6 +5,8 @@ import type { PromptPart } from './prompt'
 
 export type MediaKind = 'image' | 'video' | 'audio'
 export const mediaKindLabel: Record<MediaKind, string> = { image: '图片', video: '视频', audio: '音频' }
+// 展示框、连线端点和拖动对齐共享布局尺寸，标题不计入展示框。
+export const MEDIA_NODE_HEADER_HEIGHT = 28
 
 export interface MediaNodeData {
   kind: MediaKind
@@ -85,4 +87,8 @@ export function getPreviewSize(data: MediaNodeData): MediaDimensions {
     width: Math.max(160, Math.round(data.width * scale)),
     height: Math.max(120, Math.round(data.height * scale)),
   }
+}
+
+export function getPreviewRect(position: { x: number; y: number }, data: MediaNodeData) {
+  return { x: position.x, y: position.y + MEDIA_NODE_HEADER_HEIGHT, ...getPreviewSize(data) }
 }
