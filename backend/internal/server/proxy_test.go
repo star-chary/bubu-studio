@@ -57,7 +57,7 @@ func TestRouterClientIPBehindProxy(t *testing.T) {
 			t.Setenv("TRUSTED_PROXIES", tc.trusted)
 			t.Setenv("APP_ORIGINS", "http://127.0.0.1:5173")
 			t.Setenv("AUTH_COOKIE_SECURE", "false")
-			router := NewRouter(nil, nil)
+			router := NewRouter(nil, nil, nil)
 			router.GET("/test/client-ip", func(c *gin.Context) { c.String(200, c.ClientIP()) })
 			req := httptest.NewRequest("GET", "/test/client-ip", nil)
 			req.RemoteAddr = tc.peer

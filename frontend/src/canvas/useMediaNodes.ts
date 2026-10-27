@@ -1,16 +1,21 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { useVueFlow, type Node, type XYPosition } from '@vue-flow/core'
-import { getMediaKind, getPreviewSize, previewRetryURL, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
+import { getMediaKind, getPreviewSize, previewRetryURL, isApimartNode, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
 import { DEFAULT_IMAGE_MODEL, maxReferenceImages, normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
 import { getStorageConfig, uploadAsset } from '../api/assets'
 import { useCanvasSession } from './useCanvasSession'
-import { submitTask, retryTaskStorage, type GenerationTask, type TaskInput } from '../api/persistence'
+import { submitTask, retryTaskStorage, type GenerationTask, type TaskInput, type TaskReference } from '../api/persistence'
 import { VIDEO_MODEL, normalizeVideoOptions, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
-import { videoReferencesError } from './videoReferences'
+import { apimartReferencesError, videoReferencesError } from './videoReferences'
 import { hasPromptReferences, normalizeParts, promptText, type PromptPart } from './prompt'
+import { normalizeParametersFor, parameterValuesFor, referenceCapability, validParameterValue, type ModelSelection } from '../models/modelCatalog'
+import { MODEL_CONFIG_VERSION, catalogModelFor } from '../models/staticModelCatalog'
+import { apimartVideoEnabled, apimartVideoInput } from '../models/apimartVideo'
+import { apimartImageCount, apimartImageEnabled, apimartImageInput } from '../models/apimartImage'
+import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
 
-interface AcceptedGeneration { input: TaskInput; quote: CreditQuote; count?: ImageOptions['count'] }
+interface AcceptedGeneration { input: TaskInput; quote?: CreditQuote; count?: number }
 
 export function useMediaNodes(flowId: string, requestedId: string, temporary: boolean) {
   const { nodes, addNodes, removeNodes, findNode, updateNodeData } = useVueFlow(flowId)
@@ -43,8 +48,10 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function createEmptyNode(kind: Exclude<MediaKind, 'audio'>, position: XYPosition) {
     sequence = Math.max(sequence, ...nodes.value.map((node) => Number(/^(?:图片|视频)节点 (\d+)$/.exec(node.data.name)?.[1] ?? 0))) + 1
+    // 新节点由用户明确选择供应商和型号，不自动回退到 Ark 默认模型。
     appendNode({ kind, name: `${kind === 'image' ? '图片' : '视频'}节点 ${sequence}`, status: 'empty',
-      ...(kind === 'video' ? { videoModel: VIDEO_MODEL, videoMode: 'reference' as const } : {}) }, position)
+      modelSelection: { provider: 'apimart', modelId: '', parameters: {} },
+      ...(kind === 'video' ? { videoMode: 'reference' as const } : {}) }, position)
   }
 
   function deleteNodes(ids: string[]) {
@@ -69,21 +76,64 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function updateImageModel(id: string, imageModel: ImageModelId) {
     const node = findNode(id)
-    if (node?.data.kind === 'image' && node.data.origin !== 'upload') updateNodeData(id, { imageModel, imageOptions: normalizeImageOptions(imageModel, node.data.imageOptions) })
+    if (node?.data.kind === 'image' && node.data.origin !== 'upload') {
+      // 选择 Ark 模型即离开目录草稿；历史 Ark 字段恢复为选择依据。
+      updateNodeData(id, { imageModel, imageOptions: normalizeImageOptions(imageModel, node.data.imageOptions), modelSelection: undefined })
+    }
   }
 
   function updateImageOptions(id: string, options: ImageOptions) {
     const node = findNode(id)
-    if (node?.data.kind === 'image' && node.data.origin !== 'upload') updateNodeData(id, { imageOptions: normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, options) })
+    if (node?.data.kind === 'image' && node.data.origin !== 'upload' && !isApimartNode(node.data)) updateNodeData(id, { imageOptions: normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, options) })
+  }
+
+  // 选择目录模型：合法旧值保留，不兼容值调整为上游默认或待选择状态。
+  function updateModelSelection(id: string, modelId: string) {
+    const node = findNode(id)
+    if (!node || node.data.origin === 'upload' || node.data.kind === 'audio') return
+    const videoMode = node.data.kind === 'video' ? compatibleVideoMode(node.data.videoMode ?? 'reference', apimartVideoModes(modelId)) : undefined
+    const model = catalogModelFor(modelId, node.data.kind as 'image' | 'video', undefined, videoMode)
+    if (!model || model.provider !== 'apimart') return
+    const { value } = normalizeParametersFor(model, node.data.modelSelection?.parameters)
+    const selection: ModelSelection = {
+      provider: 'apimart', modelId: model.modelId, parameters: value,
+      catalogVersion: MODEL_CONFIG_VERSION,
+      schemaVersion: model.parameters?.schemaVersion || undefined,
+    }
+    updateNodeData(id, { modelSelection: selection, ...(node.data.kind === 'video' ? { videoMode } : {}) })
+  }
+
+  function updateModelParameter(id: string, key: string, value: unknown) {
+    const node = findNode(id)
+    const selection = node?.data.modelSelection
+    if (!node || !selection?.modelId || node.data.origin === 'upload') return
+    const model = catalogModelFor(selection.modelId, node.data.kind as 'image' | 'video', selection.parameters, node.data.videoMode)
+    const field = model?.parameters?.parameters.find((parameter) => parameter.key === key)
+    if (!model || !field || field.kind === 'fixed') return
+    const effective = { ...parameterValuesFor(model, selection.parameters), [key]: value }
+    if (value !== undefined && !validParameterValue(field, value, effective)) return
+    const parameters = { ...selection.parameters, [key]: value }
+    for (const alias of field.aliases ?? []) delete parameters[alias]
+    // 编辑基础项时只调整受其联动影响的基础值；历史高级字段完整保留。
+    const normalized = normalizeParametersFor(model, effective).value
+    for (const other of model.parameters?.parameters ?? []) {
+      if (other.key === key || other.kind === 'fixed') continue
+      if (!validParameterValue(other, effective[other.key], effective) && normalized[other.key] !== undefined) parameters[other.key] = normalized[other.key]
+    }
+    updateNodeData(id, { modelSelection: { ...selection, parameters } })
   }
 
   function referenceInputFor(id: string): { keys: string[]; error: string } {
     const target = findNode(id)
     if (!target) return { keys: [], error: '节点已不存在' }
     const ids: string[] = target.data.referenceIds ?? []
-    const limit = maxReferenceImages(target.data.imageModel ?? DEFAULT_IMAGE_MODEL)
+    const apimart = isApimartNode(target.data)
+    const limit = apimart ? undefined : maxReferenceImages(target.data.imageModel ?? DEFAULT_IMAGE_MODEL)
+    const capability = apimart ? referenceCapability(catalogModelFor(target.data.modelSelection?.modelId ?? '', 'image', target.data.modelSelection?.parameters), 'image') : undefined
+    const effectiveLimit = apimart ? (capability?.max ?? undefined) : limit
     const fail = (error: string) => ({ keys: [], error })
-    if (ids.length > limit) return fail(`所选模型最多支持 ${limit} 张参考图片，请移除多余参考或切换模型`)
+    if (effectiveLimit === 0 && ids.length) return fail('所选模型不支持参考图片，请移除参考或切换模型')
+    if (effectiveLimit !== undefined && ids.length > effectiveLimit) return fail(`所选模型最多支持 ${effectiveLimit} 张参考图片，请移除多余参考或切换模型`)
     const keys: string[] = []
     for (const sourceId of ids) {
       const source = findNode(sourceId)
@@ -94,9 +144,12 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       const asset = source.data.asset
       if (!asset || source.data.storage?.status !== 'saved') return fail('参考图片尚未保存，请先保存或重新上传素材')
       if (asset.canvasId !== canvasId.value || asset.nodeId !== sourceId || asset.kind !== 'images') return fail('参考图片归属无效，请重新上传')
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'].includes(asset.contentType)) return fail('参考图片请使用 PNG、JPEG、WebP、GIF 或 BMP 格式')
-      const { width = 0, height = 0 } = source.data
-      if (width <= 14 || height <= 14 || width * height > 36_000_000 || width > 16 * height || height > 16 * width) return fail('参考图片宽高须大于 14 像素、宽高比在 1:16～16:1 之间，总像素不超过 3600 万')
+      if (!apimart) {
+        // Ark 的格式与尺寸约束只适用于 Ark 模型；目录模型的素材能力以目录信息为准。
+        if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'].includes(asset.contentType)) return fail('参考图片请使用 PNG、JPEG、WebP、GIF 或 BMP 格式')
+        const { width = 0, height = 0 } = source.data
+        if (width <= 14 || height <= 14 || width * height > 36_000_000 || width > 16 * height || height > 16 * width) return fail('参考图片宽高须大于 14 像素、宽高比在 1:16～16:1 之间，总像素不超过 3600 万')
+      }
       if (keys.includes(asset.key)) return fail('参考图片不能重复')
       keys.push(asset.key)
     }
@@ -105,36 +158,67 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function referenceErrorFor(id: string) {
     const target = findNode(id)
-    if (target?.data.kind === 'video' && target.data.videoMode === 'text') {
+    if (!target) return ''
+    const mode = target.data.modelSelection ? compatibleVideoMode(target.data.videoMode ?? 'reference', apimartVideoModes(target.data.modelSelection.modelId)) : target.data.videoMode
+    // 已接入的文生模式忽略素材连线，但不能提交提示词中的素材标签。
+    if (target.data.kind === 'video' && (!target.data.modelSelection || apimartVideoEnabled(target.data.modelSelection)) && mode === 'text') {
       return target.data.promptParts?.some((part: PromptPart) => part.type === 'reference')
         ? '文生视频不能包含素材标签，请先移除提示词中的 @ 素材标签' : ''
     }
-    for (const part of target?.data.promptParts ?? []) {
+    for (const part of target.data.promptParts ?? []) {
       if (part.type !== 'reference') continue
       const source = findNode(part.nodeId)
-      if (!target?.data.referenceIds?.includes(part.nodeId) || !source || source.data.kind !== part.kind) return '提示词中的素材标签已失效，请重新选择参考素材'
+      if (!target.data.referenceIds?.includes(part.nodeId) || !source || source.data.kind !== part.kind) return '提示词中的素材标签已失效，请重新选择参考素材'
     }
-    if (target?.data.kind !== 'video') return referenceInputFor(id).error
-    const ids: string[] = target.data.referenceIds ?? []
+    if (target.data.kind !== 'video') {
+      const references = referenceInputFor(id)
+      if (references.error) return references.error
+      const selection = target.data.modelSelection
+      if (selection?.modelId === 'seedream-5-0-lite' && !references.keys.length) {
+        const model = catalogModelFor(selection.modelId, 'image', selection.parameters)
+        if (model && parameterValuesFor(model, selection.parameters).size === 'auto') return '该模型的自动比例需要参考图片，请添加参考图片或选择固定比例'
+      }
+      return ''
+    }
+    if (mode === 'image' && (!target.data.firstFrameId || !target.data.referenceIds?.includes(target.data.firstFrameId))) return '请明确选择一张起始图片'
+    if (mode === 'image' && target.data.promptParts?.some((part: PromptPart) => part.type === 'reference' && part.nodeId !== target.data.firstFrameId)) return '图生视频只能引用选定的起始图片，请移除其他素材标签'
+    const ids: string[] = mode === 'image' ? [target.data.firstFrameId] : target.data.referenceIds ?? []
     const sources = ids.map((sourceId) => findNode(sourceId))
     if (sources.some((source) => !source || source.id === id)) return '参考素材已不存在或引用了自身'
+    if (target.data.modelSelection) {
+      // 目录草稿节点不套用 Ark 素材规则；限制只来自选中模型的目录信息。
+      if (!isApimartNode(target.data)) return ''
+      return apimartReferencesError(sources as { id: string; data: MediaNodeData }[], canvasId.value, catalogModelFor(target.data.modelSelection.modelId, 'video'), mode)
+    }
     return videoReferencesError(sources as { id: string; data: MediaNodeData }[], canvasId.value, target.data.videoModel ?? VIDEO_MODEL)
   }
 
   function generationInputFor(id: string): TaskInput | null {
     const node = findNode(id)
     if (!session.ready.value || !session.enabled.value || !node || node.data.origin === 'upload' || node.data.kind === 'audio') return null
+    const apimart = node.data.kind === 'video' ? apimartVideoEnabled(node.data.modelSelection) : apimartImageEnabled(node.data.modelSelection)
+    if (node.data.modelSelection && !apimart) return null
     const prompt = node.data.promptParts?.length ? (node.data.prompt ?? '') : (node.data.prompt ?? '').trim()
     const promptParts = node.data.promptParts?.map((part: PromptPart) => ({ ...part }))
     if ([...prompt.trim()].length > 2000 || referenceErrorFor(id)) return null
     if (node.data.kind === 'image') {
       if (!prompt) return null
       const referenceKeys = referenceInputFor(id).keys
+      if (apimart) return apimartImageInput(node.data.modelSelection!, { prompt, promptParts, canvasId: canvasId.value, nodeId: id }, referenceKeys)
       const { resolution, ratio } = normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions)
       return { prompt, ...(promptParts?.length ? { promptParts } : {}), model: node.data.imageModel ?? DEFAULT_IMAGE_MODEL,
         imageOptions: { resolution, ratio }, canvasId: canvasId.value, nodeId: id, ...(referenceKeys.length ? { referenceKeys } : {}) }
     }
-    const mode = node.data.videoMode ?? 'reference'
+    const mode = apimart ? compatibleVideoMode(node.data.videoMode ?? 'reference', apimartVideoModes(node.data.modelSelection!.modelId))! : node.data.videoMode ?? 'reference'
+    if (apimart) {
+      const ids = mode === 'image' ? [node.data.firstFrameId!] : mode === 'reference' ? node.data.referenceIds ?? [] : []
+      const references: (TaskReference | null)[] = ids.map((sourceId: string) => {
+        const source = findNode(sourceId)
+        return source?.data.asset ? { nodeId: sourceId, assetKey: source.data.asset.key, kind: source.data.kind, ...(mode === 'image' ? { role: 'first_frame' as const } : {}) } : null
+      })
+      if (references.some((ref) => !ref)) return null
+      return apimartVideoInput(node.data.modelSelection!, { prompt, promptParts, canvasId: canvasId.value, nodeId: id, mode }, references as NonNullable<TaskInput['references']>)
+    }
     if (mode === 'text' && !prompt.trim()) return null
     const model = node.data.videoModel ?? VIDEO_MODEL
     const options = normalizeVideoOptions(model, node.data.videoOptions)
@@ -157,13 +241,16 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   }
 
   async function generateNodeImage(id: string, accepted: AcceptedGeneration) {
+    const quote = accepted.quote
     const node = findNode(id)
     if (!node || node.data.kind !== 'image' || generationRequests.has(id) || node.data.generation?.status === 'generating' || node.data.status === 'loading') return
     const input = acceptedInputFor(id, accepted)
     if (!input) return
+    if (input.provider !== 'apimart' && !quote) return
     const options = normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions)
     const count = accepted.count ?? 1
-    if (count !== options.count) return
+    const currentCount = input.provider === 'apimart' ? apimartImageCount(node.data.modelSelection!) : options.count
+    if (count !== currentCount) return
     const prompt = input.prompt
     const model = input.model
     const referenceKeys = input.referenceKeys ?? []
@@ -185,7 +272,8 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
           && position.y < other.position.y + size.height + 48 && position.y + 348 > other.position.y
       }))
       ids.push(appendNode({ kind: 'image', name: `${node.data.name} · ${index + 1}`, status: 'empty', prompt,
-        promptParts: input.promptParts?.map((part) => ({ ...part })), imageModel: model as ImageModelId,
+        promptParts: input.promptParts?.map((part) => ({ ...part })), imageModel: node.data.imageModel,
+        ...(node.data.modelSelection ? { modelSelection: { ...node.data.modelSelection, parameters: { ...node.data.modelSelection.parameters, ...(node.data.modelSelection.parameters.n !== undefined ? { n: 1 } : {}) } } } : {}),
         imageOptions: { ...options, count: 1 }, referenceIds: [...(node.data.referenceIds ?? [])] }, position))
     }
     const jobs = ids.map((nodeId) => ({ nodeId, taskId: crypto.randomUUID(), controller: new AbortController() }))
@@ -200,7 +288,8 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
         if (disposed) return
         if (!findNode(job.nodeId)) throw new Error('目标节点已移除，剩余图片未提交。')
         updateNodeData(job.nodeId, { generation: { status: 'generating', taskId: job.taskId, prompt, model, referenceKeys } })
-        const task = await submitTask(job.taskId, { ...input, nodeId: job.nodeId, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion })
+        const billing = input.provider === 'apimart' ? {} : { acceptedPoints: quote!.points, priceVersion: quote!.priceVersion }
+        const task = await submitTask(job.taskId, { ...input, nodeId: job.nodeId, ...billing })
         submitted++
         if (!disposed) session.track(task, true)
       }
@@ -221,16 +310,28 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function updateVideoOptions(id: string, options: VideoOptions) {
     const node = findNode(id)
-    if (node?.data.kind === 'video') updateNodeData(id, { videoOptions: normalizeVideoOptions(node.data.videoModel ?? VIDEO_MODEL, options) })
+    if (node?.data.kind === 'video' && !isApimartNode(node.data)) updateNodeData(id, { videoOptions: normalizeVideoOptions(node.data.videoModel ?? VIDEO_MODEL, options) })
   }
 
   function updateVideoModel(id: string, model: VideoModelId) {
     const node = findNode(id)
-    if (node?.data.kind === 'video') updateNodeData(id, { videoModel: model, videoOptions: normalizeVideoOptions(model, node.data.videoOptions) })
+    if (node?.data.kind === 'video') {
+      // 选择 Ark 模型即离开目录草稿。
+      updateNodeData(id, { videoModel: model, videoMode: compatibleVideoMode(node.data.videoMode ?? 'reference', ['text', 'reference']), videoOptions: normalizeVideoOptions(model, node.data.videoOptions), modelSelection: undefined })
+    }
   }
 
   function updateVideoMode(id: string, mode: VideoMode) {
-    if (findNode(id)?.data.kind === 'video') updateNodeData(id, { videoMode: mode })
+    const node = findNode(id)
+    if (!node || node.data.kind !== 'video') return
+    const modes = node.data.modelSelection ? apimartVideoModes(node.data.modelSelection.modelId) : ['text', 'reference']
+    if (modes.includes(mode)) updateNodeData(id, { videoMode: mode })
+  }
+
+  function updateFirstFrame(id: string, sourceId: string) {
+    const node = findNode(id)
+    if (node?.data.kind !== 'video' || !apimartVideoModes(node.data.modelSelection?.modelId).includes('image') || !node.data.referenceIds?.includes(sourceId) || findNode(sourceId)?.data.kind !== 'image') return
+    updateNodeData(id, { firstFrameId: sourceId })
   }
 
   async function generateNodeVideo(id: string, accepted: AcceptedGeneration) {
@@ -238,6 +339,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (!node || node.data.kind !== 'video' || generationRequests.has(id) || node.data.generation?.status === 'generating') return
     const input = acceptedInputFor(id, accepted)
     if (!input) return
+    if (input.provider !== 'apimart' && !accepted.quote) return
     const prompt = input.prompt
     const taskId = crypto.randomUUID()
     generationRequests.set(id, new AbortController())
@@ -245,7 +347,8 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     try {
       await session.flush()
       if (disposed || !findNode(id)) return
-      const task = await submitTask(taskId, { ...input, acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion }, 'video')
+      const billing = input.provider === 'apimart' ? {} : { acceptedPoints: accepted.quote!.points, priceVersion: accepted.quote!.priceVersion }
+      const task = await submitTask(taskId, { ...input, ...billing }, 'video')
       if (!disposed) session.track(task, true)
     }
     catch (error) { if (!disposed && findNode(id)) updateNodeData(id, { generation: { taskId, status: 'error', prompt, model: input.model, error: error instanceof Error ? error.message : '视频提交失败' } }) }
@@ -410,5 +513,5 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

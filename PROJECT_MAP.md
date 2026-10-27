@@ -1,6 +1,16 @@
 # 项目地图
 
+2026-10-27 中转站图片生成（本地）：图片节点接入固定清单中的 APIMart 型号，文生图和支持参考的图生图复用现有画布、任务队列、OSS 与结果回填；多张按独立节点和任务提交，Midjourney 显示四宫格。无需平台积分，未新增数据库表。Go 测试含独立 PostgreSQL、供应商模拟与浏览器模拟；本次尚未执行真实付费出图或真实 OSS 转存。详见 [APIMart 图片生成](./docs/apimart-image-generation.md)。
+
+2026-10-26 中转站视频接入扩展（本地）：前后端共用静态 `video_models.json`，22个通用视频型号按文档支持文生、普通图片参考或单图起始画面。统一功能菜单三项，不支持置灰；切换保留兼容功能，素材不齐只限制生成。图生显式保存 `firstFrameId`，任务固定原生参数和素材角色；复用现有队列、OSS转存、原节点回填和恢复，不新增表或迁移、不参与平台积分。三个专用工作流不进入新选择菜单。22个代表性真实任务均成功转存、播放和刷新恢复；FLUX 3 Video观察超时后继续其他型号，续查原任务最终成功，Seedance 2.0的总耗时也已记录。51项浏览器回归、Go/真实测试库、vet和构建通过。型号与真实调用记录见 [中转站视频接入](./docs/apimart-video-models.md)。
+
+2026-10-25 固定模型与基础参数：前端使用 `staticModelCatalog.ts` 维护 APIMart 16 个图片选项、25 个视频选项，界面统一放在 APIMart 一组、条目仅显示型号名称；MJ 固定 v8.2、v8.1、v7、Niji 7，Grok Imagine Video 1.5 纳入常用。参数仅开放比例、清晰度、视频时长、生成音频、生成数量，移除更多设置；按供应商原字段与文档约束显示，旧草稿高级字段完整保留。移除后端动态目录同步 / Schema 处理 / 缓存 / 目录路由，以及前端目录请求与 IndexedDB 缓存；模型界面不依赖目录网络请求。已接通 APIMart Seedance 2.5 文生与图片参考视频生成，复用原有任务队列、视频转存和节点回填；供应商固定在任务输入中，其余 APIMart 型号仍隔离。该链路暂不参与平台积分。真实两条 720P / 5秒视频的生成、播放与刷新恢复通过，无新数据库表或迁移。见 [APIMart 视频生成](./docs/apimart-video-generation.md)。见 [固定模型与基础参数](./docs/apimart-model-catalog.md)。
+
+2026-10-18 用户查询 MCP（已随后端和管理端 `20261018T111607Z` 发布）：远程 `/mcp` 提供只读 `list_users`，与管理台共用管理员用户查询入口。新增 OAuth 授权码 + S256 PKCE、浏览器授权确认及撤销页面，008 迁移仅新增应用与凭证哈希两张授权表；访问令牌 1 小时到期，未实现刷新令牌。Go / 隔离 PostgreSQL、官方 SDK、管理端构建与浏览器回归通过；正式 HTTPS 的真实 Chrome 已验证登录回跳、取消零签发、授权兑换、工具发现 / 查询与原接口结果一致，以及撤销后旧令牌立即失效。发布前备份已校验，临时验收账号、注册积分及授权记录已清理，无付费模型或 OSS 调用；具体第三方 AI 应用尚未接入验收。见 [用户查询 MCP](./docs/mcp.md)。
+
 2026-10-16 节点对齐（已随 `20261016T094543Z` 发布，功能提交 `3e4cac7`）：拖动媒体节点时，按素材展示框的边缘和中心显示参考线并吸附，排除标题、工具框和提示词输入框。按屏幕距离统一缩放后的吸附手感，沿用现有坐标自动保存；无后端接口或数据库变更。本地与正式 HTTPS 实际前端产物均通过 14 项对齐专项与 4 项相关拖动 / 播放 / 引用回归，类型检查和生产构建通过；业务接口与媒体使用模拟数据及本地样本，未写入生产。发布复用最新后端及管理端，后端进程和摘要不变，保留上一版供回退。见 [节点展示框吸附对齐](./docs/node-alignment.md)。
+
+2026-10-16 视频错误分类（已随后端 `20261015T165824Z` 发布）：创建拒绝与异步失败按人像 / 内容 / 版权审核、参数、素材读取、模型权限、账号及限流原因分别提示，提交阶段按真实请求布局显示参考序号，保留脱敏诊断。新拒绝分类仍按原事务退回积分；不确定提交继续待核查且不自动重发。无新表或迁移，前端沿用现有任务错误展示。隔离 PostgreSQL 的 Go 全包测试、vet、Linux 构建、备份及线上运行产物 / HTTPS 检查通过，未追加付费生成。见 [视频生成错误分类](./docs/video-errors.md)。
 
 2026-10-13 节点素材工具（已随 `20261012T161952Z` 发布，功能提交 `0c6c79e`）：任意媒体节点选中后显示上方“下载 / 放大”，支持下载原文件和页面全屏预览；空节点禁用按钮。输入框保留原有展示条件，上传节点不显示；生成节点输入框始终在节点下方，允许底部裁切。工具、提示词和预览各自维护页面状态，不新增后端接口或数据库变更。本地与正式 HTTPS 实际前端产物均通过 8/8 项相关浏览器回归，类型检查、构建和敏感信息扫描通过；使用本地样本和模拟接口，未调用付费模型或写入生产业务数据。发布复用后端和管理端，后端进程不变，保留上一版用于回退。实现与边界见 [节点素材工具](./docs/node-media-tools.md)。
 
@@ -45,6 +55,9 @@
 | `admin/`、`docs/admin.md` | BuBu-后台管理独立前端、接口／数据模型、初始化、运行与本地验收边界 |
 | `backend/internal/server/admin.go`、`persistence/admin.go` | 管理员权限、用户搜索与分页、带审计的事务发放和请求幂等 |
 | `backend/internal/persistence/migrations/007_admin.sql`、`backend/cmd/set-admin/` | 用户角色、账本审计字段；按明确用户 ID 初始化管理员并撤销旧会话 |
+| `docs/mcp.md`、`backend/internal/server/mcp*.go` | 远程只读工具、参数契约、OAuth 发现 / 授权 / 兑换、管理台授权页面及验证边界 |
+| `backend/internal/persistence/mcp_oauth.go`、`migrations/008_mcp_oauth.sql` | 应用与凭证哈希存储、单次兑换 / 撤销事务、网页和 MCP 共用的管理员查询入口 |
+| `admin/tests/mcp-return.spec.ts`、`admin/scripts/verify-live-mcp.mjs` | 管理台回跳保护，以及 Chrome → 隔离 PostgreSQL 的完整授权 / 调用 / 撤销验收 |
 | `docs/deployment.md` | 通用部署目录、配置模板、服务与数据流、发布检查和证书维护 |
 | `docs/development-notes.md` | 原 README 中的开发过程、交互细节和分阶段验证记录 |
 | `deploy/nginx/studio.example.conf`、`frame-space-proxy.conf`、`frame-space-upload-size.conf` | 脱敏后的独立站点示例、同机反向代理和上传 200 MiB 配置；请求头边界已验证，完整 200 MiB 上传尚未验收 |
@@ -66,6 +79,7 @@
 | `backend/internal/ark/image_options.go`、`backend/internal/persistence/image_options_test.go` | 模型尺寸白名单、旧参数兼容、持久化任务传参与分辨率报价验证 |
 | `frontend/src/components/VideoGenerationControls.vue`、`frontend/tests/video-controls.spec.ts` | 四款视频模型、文生视频／全能参考、参数弹层与交互回归 |
 | `docs/video-models.md`、`docs/video-prompt-controls.md` | 当前视频模型能力、报价与数据流；控件历史阶段记录 |
+| `docs/video-errors.md`、`backend/internal/ark/video_errors.go` | 视频错误分类、参考序号、脱敏诊断、异步失败和积分退回边界 |
 | `docs/canvas-library.md`、`frontend/src/views/GuestHomePage.vue`、`HomePage.vue` | 公开首页、登录后个人画布库、命名新建、历史分页与布局预览 |
 | `backend/internal/persistence/migrations/003_canvas_library.sql`、`canvas_library_test.go` | 名称、排序索引、旧数据迁移与跨画布隔离测试 |
 | `frontend/tests/canvas-library.spec.ts`、`frontend/scripts/verify-live-canvas-library.mjs` | 7 项专项与真实双画布保存 / 切换 / 恢复验收 |
@@ -89,6 +103,10 @@
 | `backend/internal/server/persistence.go`、`persistence_test.go` | 画布保存 / 恢复、任务查询 / 分页接口及真实 HTTP 集成测试 |
 | `frontend/src/canvas/useCanvasSession.ts` | 画布 ID、恢复、串行自动保存、版本冲突、任务轮询和历史分页 |
 | `frontend/src/api/persistence.ts`、`components/TaskHistory.vue` | 持久化 API、同任务 ID 的提交恢复、任务记录面板 |
+| `docs/apimart-model-catalog.md`、`docs/apimart-parameter-sources.md` | 固定模型范围、基础参数来源、历史草稿兼容及生成隔离边界 |
+| `frontend/src/models/modelCatalog.ts`、`models/staticModelCatalog.ts` | 草稿与参数纯函数、固定型号和本地基础参数，无运行时目录请求 |
+| `frontend/src/components/ImageModelSelect.vue`、`CatalogParameterForm.vue` | 分组模型选择器（搜索 / 状态 / 下架提示）与按契约渲染的参数表单 |
+| `frontend/tests/static-models.spec.ts` | 固定清单 / 基础参数 / MJ 版本 / 零目录请求 / 保存恢复 / 历史草稿回归 |
 | `frontend/tests/persistence.spec.ts`、`scripts/verify-live-persistence.mjs` | 6 项模拟接口浏览器验收及真实 Go / PostgreSQL 保存与失败任务验收 |
 | `backend/oss-policy.example.json` | 仅授权指定 Bucket 的项目开发目录读写，已限定 bubu2/frame-space/dev/* |
 | `backend/internal/storage/keys.go`、`keys_test.go` | 对象路径分配与校验：环境、画布、来源、类型、节点、新资源 UUID |
@@ -153,6 +171,7 @@
 - 改数据库 / 保存 / 任务：`docs/persistence.md` → `backend/internal/persistence/` → `backend/internal/server/persistence.go` / `images.go` → `frontend/src/canvas/useCanvasSession.ts` / `useMediaNodes.ts`。
 
 - 改后端启动 / 路由：`backend/README.md` → `cmd/server/main.go` → `internal/server/router.go`（后两个路径相对于 `backend/`）。
+- 改固定模型 / 基础参数：`docs/apimart-model-catalog.md` / `apimart-parameter-sources.md` → `frontend/src/models/staticModelCatalog.ts` / `modelCatalog.ts` → `ImageModelSelect.vue` / `CatalogParameterForm.vue` → `tests/static-models.spec.ts`。
 - 改文生图 / 图生图链路：`docs/image-generation.md` → `NodePromptPanel.vue` → `useMediaNodes.ts` → `api/images.ts` → `backend/internal/server/images.go` → `backend/internal/ark/images.go`。
 - 改可选模型：`frontend/src/models/imageModels.ts` 与 `backend/internal/ark/models.go` 同步维护；交互见 `ImageModelSelect.vue`，供应商参数适配见 `backend/internal/ark/images.go`。
 - 改文件存储：`docs/object-storage.md` → `frontend/src/api/assets.ts` / `useMediaNodes.ts` → `backend/internal/server/assets.go` / `images.go` → `backend/internal/storage/`。

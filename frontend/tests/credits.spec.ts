@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
-import { expect, test } from './setup'
+import { expect, test, selectArkModel } from './setup'
 import type { GenerationTask, SavedCanvas } from '../src/api/persistence'
 
 const canvasId = '33333333-3333-4333-8333-333333333333'
@@ -145,6 +145,7 @@ test('临时画布即使有积分也不能绕过任务冻结直接生成', async
   await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
   await page.getByRole('article', { name: '图片节点 1', exact: true }).click({ position: { x: 60, y: 70 } })
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   await page.getByRole('textbox', { name: '图片提示词' }).fill('一片海')
   await expect(page.getByRole('status').filter({ hasText: '请先使用已保存画布' })).toBeVisible()
   await expect(page.getByRole('button', { name: '生成图片', exact: true })).toBeDisabled()
@@ -162,7 +163,11 @@ test('新建节点立即输入时先保存节点，再向后端获取报价', as
   await page.mouse.click(690, 550, { button: 'right' })
   await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
+  // 面板始终跟在节点下方；先平移画布让新建节点上方留出面板空间，
+  // 使模型选择器（面板底栏）在视口内可点击。
+  await page.mouse.move(1200, 620); await page.mouse.down(); await page.mouse.move(1200, 420, { steps: 8 }); await page.mouse.up()
   await page.getByRole('article', { name: '图片节点 1', exact: true }).click({ position: { x: 60, y: 70 } })
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   await page.getByRole('textbox', { name: '图片提示词' }).fill('初次输入')
   await expect(page.locator('.credit-cost-trigger')).toHaveText('6')
   expect(sawSavedNode).toBe(true)

@@ -388,7 +388,7 @@ func TestConcurrentRegistrationNeverReplacesPassword(t *testing.T) {
 }
 
 func TestAuthMissingDatabaseAndLimiter(t *testing.T) {
-	h := NewRouter(nil, nil)
+	h := NewRouter(nil, nil, nil)
 	assertStatus(t, authRequest(h, nil, "GET", "/health", nil, nil), 200)
 	assertStatus(t, authRequest(h, nil, "GET", "/api/auth/me", nil, nil), 503)
 	assertStatus(t, authRequest(h, nil, "POST", "/api/images/generations", nil, nil), 503)

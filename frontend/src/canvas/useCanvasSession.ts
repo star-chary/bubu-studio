@@ -37,8 +37,8 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
     return {
       nodes: nodes.value.map(({ id, position, data }) => ({ id, position: { x: position.x, y: position.y }, data: {
         kind: data.kind, name: data.name, prompt: data.prompt ?? '', imageModel: data.imageModel, imageOptions: data.imageOptions,
-        promptParts: data.promptParts, videoModel: data.videoModel, videoMode: data.videoMode, videoOptions: data.videoOptions,
-        origin: data.origin, referenceIds: [...(data.referenceIds ?? [])],
+        promptParts: data.promptParts, videoModel: data.videoModel, videoMode: data.videoMode, firstFrameId: data.firstFrameId, videoOptions: data.videoOptions,
+        modelSelection: data.modelSelection, origin: data.origin, referenceIds: [...(data.referenceIds ?? [])],
       } })),
       viewport: { ...viewport.value },
     }

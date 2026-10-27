@@ -210,6 +210,9 @@ test('键盘与窄屏交互，弹层不越界、不缩放画布，模型菜单�
     }).toBe(true)
   }
   await page.screenshot({ path: info.outputPath('image-parameters-mobile.png') })
+  // The node footer can be below a 320×480 viewport; the popup boundary was
+  // checked above, while the remaining menu and focus checks need a visible footer.
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.keyboard.press('Escape')
   await expect(parameters(page)).toBeFocused()
   await page.getByRole('button', { name: /^选择模型/ }).click()

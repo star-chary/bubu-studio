@@ -1,0 +1,1797 @@
+[
+  {
+    "modelId": "seedance-2.5",
+    "name": "Seedance 2.5",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/seedance-2-5/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 30,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_urls",
+    "referenceTag": "@图片{n}",
+    "omitImageRatio": false,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "default": "adaptive",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 4,
+        "maximum": 30,
+        "step": 1,
+        "default": 5,
+        "specialValues": [
+          {
+            "value": -1,
+            "label": "自动时长"
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "generate_audio",
+        "aliases": [
+          "audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image",
+    "imageParameters": {
+      "size": "adaptive"
+    },
+    "referenceExtra": {
+      "omni_reference_task_type": "reference"
+    }
+  },
+  {
+    "modelId": "seedance-2.0",
+    "name": "Seedance 2.0",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "@图片{n}",
+    "omitImageRatio": false,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 4,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "generate_audio",
+        "aliases": [
+          "audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image"
+  },
+  {
+    "modelId": "seedance-2.0-fast",
+    "name": "Seedance 2.0 Fast",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "@图片{n}",
+    "omitImageRatio": false,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480p",
+          "720p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 4,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "generate_audio",
+        "aliases": [
+          "audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image"
+  },
+  {
+    "modelId": "kling-v4",
+    "name": "Kling 4.0",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v4/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 10,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "@Image{n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "21:9",
+          "auto"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "note": "自动比例用于参考生成；图生视频比例跟随素材。",
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720p",
+          "1080p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 30,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "fixed",
+        "fixed": true,
+        "required": false
+      }
+    ],
+    "referenceExtra": {
+      "omni_reference_task_type": "reference"
+    },
+    "omitParameters": [
+      "audio"
+    ]
+  },
+  {
+    "modelId": "kling-3.0-turbo",
+    "name": "Kling 3.0 Turbo",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-3.0-turbo/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720p",
+          "1080p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "kling-v3",
+    "name": "Kling 3.0",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v3/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "image_urls",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "mode",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "std",
+          "pro",
+          "4k"
+        ],
+        "default": "std",
+        "optionLabels": {
+          "std": "720P",
+          "pro": "1080P",
+          "4k": "4K"
+        },
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": false,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "kling-v3-omni",
+    "name": "Kling 3.0 Omni",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v3-omni/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": null,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_urls",
+    "referenceTag": "<<<image_{n}>>>",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "mode",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "std",
+          "pro",
+          "4k"
+        ],
+        "default": "std",
+        "optionLabels": {
+          "std": "720P",
+          "pro": "1080P",
+          "4k": "4K"
+        },
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": false,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "kling-v3-motion-control",
+    "name": "Kling 3.0 Motion Control",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v2-6/kling-v2-6-motion-control-generation",
+    "generationEnabled": false,
+    "modes": [],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "mode",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "std",
+          "pro"
+        ],
+        "default": "std",
+        "optionLabels": {
+          "std": "标准",
+          "pro": "高品质",
+          "4k": "4K"
+        },
+        "required": false
+      }
+    ],
+    "excludedReason": "需要动作视频与人物图片的动作控制工作流"
+  },
+  {
+    "modelId": "wan3.0-video",
+    "name": "Wan 3.0",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/wan3.0-video/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 10,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "图{n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "adaptive",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480P",
+          "720P",
+          "1080P"
+        ],
+        "default": "1080P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 2,
+        "maximum": 30,
+        "step": 1,
+        "default": 5,
+        "specialValues": [
+          {
+            "value": -1,
+            "label": "自动时长"
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image",
+    "referenceExtra": {
+      "generation_type": "reference"
+    }
+  },
+  {
+    "modelId": "wan3.0-video-prime",
+    "name": "Wan 3.0 Prime",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/wan3.0-video/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 10,
+    "imageInput": "image_with_roles",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "图{n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "adaptive",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480P",
+          "720P",
+          "1080P"
+        ],
+        "default": "1080P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 2,
+        "maximum": 30,
+        "step": 1,
+        "default": 5,
+        "specialValues": [
+          {
+            "value": -1,
+            "label": "自动时长"
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image",
+    "referenceExtra": {
+      "generation_type": "reference"
+    }
+  },
+  {
+    "modelId": "MiniMax-H3",
+    "name": "MiniMax H3",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/minimax-h3/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "768P",
+          "2K"
+        ],
+        "default": "2K",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 4,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "fixed",
+        "fixed": true,
+        "required": false
+      }
+    ],
+    "omitParameters": [
+      "audio"
+    ]
+  },
+  {
+    "modelId": "MiniMax-H3-Max",
+    "name": "MiniMax H3 Max",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/minimax-h3/max",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480P",
+          "768P",
+          "1080P"
+        ],
+        "default": "768P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 5,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "fixed",
+        "fixed": true,
+        "required": false
+      }
+    ],
+    "omitParameters": [
+      "audio"
+    ]
+  },
+  {
+    "modelId": "MiniMax-H3-Regeneration",
+    "name": "MiniMax H3 Regeneration",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/minimax-h3/regeneration",
+    "generationEnabled": false,
+    "modes": [],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "fixed",
+        "fixed": "2K",
+        "required": false
+      },
+      {
+        "key": "audio",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "fixed",
+        "fixed": true,
+        "required": false
+      }
+    ],
+    "excludedReason": "需要原生成任务 ID 的重生成工作流"
+  },
+  {
+    "modelId": "happyhorse-1.1",
+    "name": "HappyHorse 1.1",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/happyhorse-1.1/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720P",
+          "1080P"
+        ],
+        "default": "1080P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "happyhorse-1.0",
+    "name": "HappyHorse 1.0",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/happyhorse-1.0/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 9,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720P",
+          "1080P"
+        ],
+        "default": "1080P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "gemini-omni-1.1-flash",
+    "name": "Gemini Omni 1.1 Flash",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/gemini-omni-1.1-flash/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 10,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "audio",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "fixed",
+        "fixed": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference",
+    "textExtra": {
+      "metadata": {
+        "task": "text_to_video"
+      }
+    },
+    "referenceExtra": {
+      "metadata": {
+        "task": "reference_to_video"
+      }
+    },
+    "imageExtra": {
+      "metadata": {
+        "task": "image_to_video"
+      }
+    },
+    "omitParameters": [
+      "audio"
+    ]
+  },
+  {
+    "modelId": "viduq4-preview",
+    "name": "Vidu Q4 Preview",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/vidu-q4-preview/generation",
+    "generationEnabled": true,
+    "modes": [
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 15,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_with_roles",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "540p",
+          "720p",
+          "1080p",
+          "2K",
+          "4K"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 16,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "referenceRole": "reference_image"
+  },
+  {
+    "modelId": "viduq3-pro",
+    "name": "Vidu Q3 Pro",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/vidu-q3-pro/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "image_urls",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "540p",
+          "720p",
+          "1080p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 1,
+        "maximum": 16,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "grok-imagine-video-1.5",
+    "name": "Grok Imagine Video 1.5",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/grok-imagine/official",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference"
+    ],
+    "maxReferenceImages": null,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": false,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3"
+        ],
+        "default": "auto",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "480p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 1,
+        "maximum": 15,
+        "step": 1,
+        "default": 8,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "flux-3-video",
+    "name": "FLUX 3 Video",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/flux-3-video/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "image_urls",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "21:9",
+          "2:1",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "auto",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "hd",
+          "fhd"
+        ],
+        "default": "hd",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 5,
+        "maximum": 20,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": true,
+        "required": false
+      }
+    ],
+    "textExtra": {
+      "mode": "t2v"
+    },
+    "imageExtra": {
+      "mode": "i2v"
+    }
+  },
+  {
+    "modelId": "pixverse-v6",
+    "name": "PixVerse V6",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/pixverse-v6/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 7,
+    "imageInput": "image_urls",
+    "referenceInput": "img_references",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "21:9"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "360p",
+          "540p",
+          "720p",
+          "1080p"
+        ],
+        "default": "540p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 1,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      },
+      {
+        "key": "audio",
+        "aliases": [
+          "generate_audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": false,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "veo3.1-quality-official",
+    "name": "Veo 3.1 Quality",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/veo3/generation-official",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720p",
+          "1080p",
+          "4K"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "enum",
+        "enum": [
+          4,
+          6,
+          8
+        ],
+        "default": 8,
+        "conditions": [
+          {
+            "when": {
+              "resolution": "4K"
+            },
+            "enum": [
+              8
+            ]
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "sample_count",
+        "unit": "个",
+        "label": "生成数量",
+        "role": "count",
+        "kind": "fixed",
+        "step": 1,
+        "default": 1,
+        "required": false,
+        "fixed": 1
+      },
+      {
+        "key": "generate_audio",
+        "aliases": [
+          "audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": false,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "veo3.1-fast-official",
+    "name": "Veo 3.1 Fast",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/veo3/generation-official",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "image"
+    ],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720p",
+          "1080p"
+        ],
+        "default": "720p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "enum",
+        "enum": [
+          4,
+          6,
+          8
+        ],
+        "default": 8,
+        "conditions": [
+          {
+            "when": {
+              "resolution": "4K"
+            },
+            "enum": [
+              8
+            ]
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "sample_count",
+        "unit": "个",
+        "label": "生成数量",
+        "role": "count",
+        "kind": "fixed",
+        "step": 1,
+        "default": 1,
+        "required": false,
+        "fixed": 1
+      },
+      {
+        "key": "generate_audio",
+        "aliases": [
+          "audio"
+        ],
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "boolean",
+        "default": false,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "skyreels-v4-std",
+    "name": "SkyReels V4 Std",
+    "group": "candidate",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/skyreels-v4/generation",
+    "generationEnabled": true,
+    "modes": [
+      "text",
+      "reference",
+      "image"
+    ],
+    "maxReferenceImages": 3,
+    "imageInput": "first_frame_image",
+    "referenceInput": "ref_images",
+    "referenceTag": "@image{n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9",
+        "aliases": [
+          "size",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "1080p",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 3,
+        "maximum": 15,
+        "step": 1,
+        "default": 5,
+        "required": false
+      }
+    ]
+  },
+  {
+    "modelId": "wan2.7-videoedit",
+    "name": "Wan 2.7 VideoEdit",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/wan2.7-videoedit/generation",
+    "generationEnabled": false,
+    "modes": [],
+    "maxReferenceImages": 0,
+    "imageInput": "first_frame_image",
+    "referenceInput": "image_urls",
+    "referenceTag": "image {n}",
+    "omitImageRatio": true,
+    "parameters": [
+      {
+        "key": "size",
+        "label": "比例",
+        "role": "ratio",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "aliases": [
+          "aspect_ratio",
+          "ratio"
+        ],
+        "required": false
+      },
+      {
+        "key": "resolution",
+        "label": "清晰度",
+        "role": "resolution",
+        "kind": "enum",
+        "enum": [
+          "720P",
+          "1080P"
+        ],
+        "default": "1080P",
+        "required": false
+      },
+      {
+        "key": "duration",
+        "label": "视频时长",
+        "role": "duration",
+        "kind": "integer",
+        "minimum": 2,
+        "maximum": 10,
+        "step": 1,
+        "default": 0,
+        "specialValues": [
+          {
+            "value": 0,
+            "label": "原视频时长"
+          }
+        ],
+        "required": false
+      },
+      {
+        "key": "audio_setting",
+        "label": "生成音频",
+        "role": "audio",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "origin"
+        ],
+        "default": "auto",
+        "optionLabels": {
+          "auto": "重新生成",
+          "origin": "保留原音频"
+        },
+        "required": false
+      }
+    ],
+    "excludedReason": "需要源视频的视频编辑工作流"
+  }
+]

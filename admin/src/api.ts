@@ -9,13 +9,13 @@ export interface LedgerEntry {
   actorId?: string; actorEmail?: string; reason: string; taskId?: string;
 }
 export interface PendingGrant { userId: string; email: string; points: number; reason: string; requestId: string }
-export const auth = reactive({ status: 'loading' as 'loading' | 'ready' | 'anonymous' | 'forbidden' | 'error', user: null as User | null, csrfToken: '', message: '', maxGrantPoints: 10000, maxReasonLength: 200 })
+export const auth = reactive({ status: 'loading' as 'loading' | 'ready' | 'anonymous' | 'forbidden' | 'error', user: null as User | null, csrfToken: '', message: '', maxGrantPoints: 10000, maxReasonLength: 200, mcpEnabled: false })
 let epoch = 0
 let requests = new AbortController()
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('frame-space-auth')
 function reset(status: typeof auth.status, message = '') {
   epoch++; requests.abort(); requests = new AbortController()
-  auth.user = null; auth.csrfToken = ''; auth.status = status; auth.message = message
+  auth.user = null; auth.csrfToken = ''; auth.status = status; auth.message = message; auth.mcpEnabled = false
 }
 channel?.addEventListener('message', () => reset('anonymous', '登录状态已在其他页面变化，请重新登录。'))
 
@@ -47,11 +47,12 @@ export async function restoreSession() {
   auth.status = 'loading'; auth.message = ''
   const current = epoch
   try {
-    const value = await api<{ session: Session; maxGrantPoints: number; maxReasonLength: number }>('/api/admin/me')
+    const value = await api<{ session: Session; maxGrantPoints: number; maxReasonLength: number; mcpEnabled?: boolean }>('/api/admin/me')
     if (current !== epoch) return
     if (value.session.user.role !== 'admin') { reset('forbidden', '该账号没有后台管理权限。'); return }
     auth.user = value.session.user; auth.csrfToken = value.session.csrfToken
     auth.maxGrantPoints = value.maxGrantPoints; auth.maxReasonLength = value.maxReasonLength
+    auth.mcpEnabled = value.mcpEnabled === true
     auth.status = 'ready'
   } catch (error) {
     if (current !== epoch) return

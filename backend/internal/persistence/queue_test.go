@@ -38,7 +38,7 @@ func queueInputs(t *testing.T, db *Store, count int) []Input {
 		if err := db.RecordAsset(ctx, storage.Asset{Key: key, Kind: storage.Image, Scope: storage.Scope{CanvasID: canvas, NodeID: promptSourceID}}); err != nil {
 			t.Fatal(err)
 		}
-		inputs[i] = Input{CanvasID: canvas, NodeID: nodeID, Prompt: fmt.Sprintf("job-%d", i), Model: ark.VideoModel, Mode: "reference", Resolution: "480p", Ratio: "16:9", Duration: 4, References: []Reference{{promptSourceID, key, "image"}}}
+		inputs[i] = Input{CanvasID: canvas, NodeID: nodeID, Prompt: fmt.Sprintf("job-%d", i), Model: ark.VideoModel, Mode: "reference", Resolution: "480p", Ratio: "16:9", Duration: 4, References: []Reference{{NodeID: promptSourceID, AssetKey: key, Kind: "image"}}}
 	}
 	return inputs
 }

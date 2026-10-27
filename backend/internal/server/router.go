@@ -7,11 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(generator imageGenerator, store AssetStore, databases ...*persistence.Store) *gin.Engine {
-	var db *persistence.Store
-	if len(databases) > 0 {
-		db = databases[0]
-	}
+// NewRouter 组装生产路由。db 为空时登录与业务接口返回未配置。
+func NewRouter(generator imageGenerator, store AssetStore, db *persistence.Store) *gin.Engine {
 	router := gin.New()
 	proxies, err := TrustedProxiesFromEnv()
 	if err != nil {
@@ -24,7 +21,7 @@ func NewRouter(generator imageGenerator, store AssetStore, databases ...*persist
 	// Ignore alternate headers that may have been supplied by the browser.
 	router.RemoteIPHeaders = []string{"X-Forwarded-For"}
 	// 请求日志和异常恢复属于通用中间件，不放进具体接口里重复编写。
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/mcp", "/oauth/authorize", "/oauth/token", "/oauth/register", "/oauth/revoke", "/oauth/connections"}}), gin.Recovery())
 	cfg, err := AuthConfigFromEnv()
 	if err != nil {
 		panic(err)
@@ -41,6 +38,7 @@ func NewRouter(generator imageGenerator, store AssetStore, databases ...*persist
 	registerPersistence(router, db)
 	registerCredits(router, db)
 	registerAdmin(router, db)
+	registerMCP(router, db, cfg)
 
 	return router
 }

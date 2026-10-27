@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
-import { test, expect } from './setup'
+import { test, expect, selectArkModel } from './setup'
 
 test.use({ viewport: { width: 1680, height: 1000 } })
 const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
@@ -17,6 +17,8 @@ async function addNode(page: Page, kind: '图片' | '视频') {
   await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
   await page.getByRole('menuitem', { name: kind, exact: true }).click()
   await article(page, `${kind}节点 1`).click({ position: { x: 60, y: 70 } })
+  // 新节点默认未选择模型；Ark 参考与生成规则回归先显式选择 Ark 模型。
+  await selectArkModel(page, kind === '图片' ? 'image' : 'video', kind === '图片' ? 'Doubao-Seedream-5.0-lite' : 'Seedance 2.5')
 }
 function assetFor(canvasId: string, nodeId: string, body: Buffer) {
   const audio = body.toString('ascii', 0, 4) === 'RIFF'

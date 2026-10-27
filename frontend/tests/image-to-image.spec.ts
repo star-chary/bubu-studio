@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { test, expect } from './setup'
+import { test, expect, selectArkModel } from './setup'
 
 const imageBytes = readFileSync(fileURLToPath(new URL('./fixtures/sample-image.png', import.meta.url)))
 const panel = (page: Page) => page.getByRole('dialog')
@@ -15,6 +15,8 @@ async function addTarget(page: Page) {
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
   const target = page.getByRole('article', { name: '图片节点 1', exact: true })
   await target.click({ position: { x: 65, y: 75 } })
+  // 新节点默认未选择模型；Ark 生成回归先显式选择 Lite。
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   await panel(page).getByRole('textbox').fill('保留构图，把颜色变成蓝色')
   return target
 }
@@ -167,6 +169,7 @@ test('切换模型重新检查参考数量，超出 Pro 上限时阻止提交', 
   await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
   await page.getByRole('article', { name: '图片节点 1', exact: true }).click({ position: { x: 30, y: 30 } })
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   await panel(page).getByRole('textbox').fill('融合参考图的颜色')
   await panel(page).getByRole('button', { name: '参考', exact: true }).click()
   for (let i = 0; i < 11; i++) await page.getByRole('article', { name: `limit-${i}.png`, exact: true }).click({ position: { x: 30, y: 30 } })

@@ -51,7 +51,7 @@ test('旧画布默认为 2.5 全能参考，模型菜单和文生视频模式可
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   const models = page.getByRole('listbox', { name: '视频模型' })
-  await expect(models.getByRole('option')).toHaveCount(4)
+  await expect(models.getByRole('option')).toHaveCount(25) // 3 个方舟型号 + 22 个通用视频生成型号
   await expect(models.getByRole('option').first()).toContainText('Seedance 2.5')
   await expect(models.getByRole('option').first()).toHaveAttribute('aria-selected', 'true')
   await page.screenshot({ path: info.outputPath('video-model-menu.png') })
@@ -59,7 +59,8 @@ test('旧画布默认为 2.5 全能参考，模型菜单和文生视频模式可
   await expect(panel(page)).toBeVisible()
   await page.getByRole('button', { name: /^选择视频生成类型/ }).click()
   const modes = page.getByRole('listbox', { name: '视频生成模式' })
-  await expect(modes.getByRole('option')).toHaveCount(2)
+  await expect(modes.getByRole('option')).toHaveCount(3)
+  await expect(modes.getByRole('option', { name: /^图生视频/ })).toBeDisabled()
   await expect(modes.getByRole('option', { name: /全能参考/ })).toBeEnabled()
   await expect(modes.getByRole('option', { name: /文生视频/ })).toBeEnabled()
   await expect(modes).toContainText('全能参考需至少添加 1 项参考素材')
@@ -150,7 +151,7 @@ test('文生视频只发送提示词；已连接素材保留为草稿但不参�
 test('文生视频空提示词与素材标签不能报价；2.0 家族拒绝纯音频参考', async ({ page }) => {
   const db = await setup(page, 'audio')
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
-  await page.getByRole('listbox', { name: '视频模型' }).getByRole('option').nth(3).click()
+  await page.getByRole('listbox', { name: '视频模型' }).getByRole('option', { name: 'Seedance 2.0 fast', exact: true }).click()
   await expect(panel(page)).toContainText('音频参考须搭配至少 1 项图片或视频')
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: /^选择视频生成类型/ }).click()

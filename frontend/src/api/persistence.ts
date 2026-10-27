@@ -7,11 +7,11 @@ import type { MediaNodeData } from '../canvas/media'
 import type { ImageGenerationOptions } from '../models/imageModels'
 
 export interface CanvasSnapshot {
-  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'videoOptions' | 'origin' | 'referenceIds'> }[]
+  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'firstFrameId' | 'videoOptions' | 'modelSelection' | 'origin' | 'referenceIds'> }[]
   viewport: { x: number; y: number; zoom: number }
 }
-export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio' }
-export interface TaskInput extends Partial<VideoOptions> { prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; imageOptions?: ImageGenerationOptions; referenceKeys?: string[]; references?: TaskReference[]; mode?: VideoMode }
+export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio'; role?: 'first_frame' }
+export interface TaskInput extends Partial<Omit<VideoOptions, 'resolution' | 'ratio'>> { provider?: 'ark' | 'apimart'; parameters?: Record<string, unknown>; resolution?: string; ratio?: string; prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; imageOptions?: ImageGenerationOptions; referenceKeys?: string[]; references?: TaskReference[]; mode?: VideoMode }
 export interface GenerationTask {
   id: string
   kind?: 'image' | 'video'
@@ -55,7 +55,7 @@ export function writeJSON<T>(path: string, body: unknown, method = 'POST') {
 }
 export const getTask = (id: string) => persistenceRequest<GenerationTask>(`/api/tasks/${id}`)
 export const retryTaskStorage = (id: string) => writeJSON<GenerationTask>(`/api/tasks/${id}/storage-retries`, {})
-export async function submitTask(id: string, input: TaskInput & { acceptedPoints: number; priceVersion: string }, kind: 'image' | 'video' = 'image'): Promise<GenerationTask> {
+export async function submitTask(id: string, input: TaskInput & { acceptedPoints?: number; priceVersion?: string }, kind: 'image' | 'video' = 'image'): Promise<GenerationTask> {
   const endpoint = `/api/${kind}s/generations`
   try { return await writeJSON<GenerationTask>(endpoint, { taskId: id, ...input }) }
   catch (error) {

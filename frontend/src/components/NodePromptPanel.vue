@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { MediaKind, MediaNodeData, MediaReference } from '../canvas/media'
+import type { MediaKind, MediaNodeData, MediaReference, NodeProvider } from '../canvas/media'
 import ImageGenerationControls from './ImageGenerationControls.vue'
 import VideoGenerationControls from './VideoGenerationControls.vue'
-import { normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
+import { DEFAULT_IMAGE_MODEL, normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
 import { VIDEO_MODEL, normalizeVideoOptions, videoModelDefinition, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
 import PromptEditor from './PromptEditor.vue'
 import { generationStatusLabel } from '../canvas/generationStatus'
 import { hasPromptReferences, type MentionCandidate, type PromptPart } from '../canvas/prompt'
+import { apimartReferenceSummary } from '../canvas/videoReferences'
+import { type ModelSelection } from '../models/modelCatalog'
+import { catalogModelFor } from '../models/staticModelCatalog'
+import { apimartVideoEnabled } from '../models/apimartVideo'
+import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
 
 const props = defineProps<{
@@ -21,11 +26,15 @@ const props = defineProps<{
   videoOptions?: VideoOptions
   videoModel?: VideoModelId
   videoMode?: VideoMode
-  imageModel: ImageModelId
+  firstFrameId?: string
+  imageModel?: ImageModelId
   imageOptions?: ImageOptions
+  modelSelection?: ModelSelection
   references: MediaReference[]
   selectingReferences: boolean
   canGenerate: boolean
+  inputReady: boolean
+  editable: boolean
   generation?: MediaNodeData['generation']
   mediaLoading: boolean
   referenceError: string
@@ -39,25 +48,56 @@ const props = defineProps<{
   quoteError: string
   anchor: { x: number; y: number; width: number; height: number }
 }>()
-const emit = defineEmits<{ 'update:promptParts': [value: PromptPart[]]; 'update:imageModel': [value: ImageModelId]; 'update:imageOptions': [value: ImageOptions]; close: []; selectReferences: []; removeReference: [sourceId: string]; generate: []; retryStorage: []; retryQuote: []; 'update:videoModel': [value: VideoModelId]; 'update:videoMode': [value: VideoMode]; 'update:videoOptions': [value: VideoOptions] }>()
+const emit = defineEmits<{
+  'update:promptParts': [value: PromptPart[]]
+  'update:imageModel': [value: ImageModelId]
+  'update:imageOptions': [value: ImageOptions]
+  'choose-model': [value: { provider: 'ark' | 'apimart'; modelId: string }]
+  'update:parameter': [key: string, value: unknown]
+  close: []
+  selectReferences: []
+  removeReference: [sourceId: string]
+  generate: []
+  retryStorage: []
+  retryQuote: []
+  'update:videoModel': [value: VideoModelId]
+  'update:videoMode': [value: VideoMode]
+  'update:firstFrame': [sourceId: string]
+  'update:videoOptions': [value: VideoOptions]
+}>()
 const panel = ref<HTMLElement | null>(null)
 const input = ref<InstanceType<typeof PromptEditor> | null>(null)
 const videoControls = ref<InstanceType<typeof VideoGenerationControls> | null>(null)
 const imageControls = ref<InstanceType<typeof ImageGenerationControls> | null>(null)
-const image = computed(() => normalizeImageOptions(props.imageModel, props.imageOptions))
+const image = computed(() => normalizeImageOptions(props.imageModel ?? DEFAULT_IMAGE_MODEL, props.imageOptions))
 const expanded = ref(false)
 const windowSize = ref({ width: window.innerWidth, height: window.innerHeight })
 const title = computed(() => `${props.kind === 'image' ? '图片' : '视频'}提示词`)
+
+// 节点供应商：目录草稿（apimart）、未选择（none）或历史 Ark（ark）。
+const provider = computed<NodeProvider>(() => (props.modelSelection ? (props.modelSelection.modelId ? 'apimart' : 'none') : 'ark'))
+const apimartModel = computed(() => (provider.value === 'apimart' ? catalogModelFor(props.modelSelection!.modelId, props.kind as 'image' | 'video', props.modelSelection!.parameters, selectedVideoMode.value) : undefined))
+const apimartVideo = computed(() => props.kind === 'video' && apimartVideoEnabled(props.modelSelection))
+const apimartImage = computed(() => props.kind === 'image' && provider.value === 'apimart' && apimartModel.value?.generationEnabled === true)
+const textVideo = computed(() => props.kind === 'video' && (provider.value === 'ark' || apimartVideo.value) && selectedVideoMode.value === 'text')
+
 const generating = computed(() => props.generation?.status === 'generating')
 const promptLength = computed(() => [...props.modelValue.trim()].length)
 const hasMentions = computed(() => hasPromptReferences(props.promptParts))
-const mentionError = computed(() => props.kind === 'video' && props.videoMode === 'text' ? '' : props.promptParts?.some((part) => part.type === 'reference' && !props.candidates.some((c) => c.id === part.nodeId && c.selected && !c.error)) ? '提示词中的素材标签已失效，请重新选择参考素材' : '')
+const mentionError = computed(() => textVideo.value ? '' : props.promptParts?.some((part) => part.type === 'reference' && !props.candidates.some((c) => c.id === part.nodeId && c.selected && !c.error)) ? '提示词中的素材标签已失效，请重新选择参考素材' : '')
 const selectedVideoModel = computed(() => props.videoModel ?? VIDEO_MODEL)
-const selectedVideoMode = computed(() => props.videoMode ?? 'reference')
+const selectedVideoMode = computed(() => compatibleVideoMode(props.videoMode ?? 'reference', provider.value === 'apimart' ? apimartVideoModes(props.modelSelection?.modelId) : ['text', 'reference']) ?? 'reference')
+const imageVideo = computed(() => props.kind === 'video' && selectedVideoMode.value === 'image')
 const videoDefinition = computed(() => videoModelDefinition(selectedVideoModel.value))
 const video = computed(() => normalizeVideoOptions(selectedVideoModel.value, props.videoOptions))
 const insufficientCredits = computed(() => !!props.creditQuote && props.creditsAvailable !== null && props.creditsAvailable < props.creditQuote.points)
-const generateDisabled = computed(() => !!mentionError.value || generating.value || props.mediaLoading || props.selectingReferences || !!props.referenceError || ((props.kind === 'image' || (props.kind === 'video' && selectedVideoMode.value === 'text')) && !promptLength.value) || promptLength.value > 2000 || !props.persistenceEnabled || props.quoteStatus !== 'ready' || !props.creditQuote || props.creditsStatus !== 'ready' || insufficientCredits.value)
+const generateDisabled = computed(() => {
+  if (!props.canGenerate || mentionError.value || generating.value || props.mediaLoading || props.selectingReferences || props.referenceError || promptLength.value > 2000 || !props.persistenceEnabled) return true
+  if ((props.kind === 'image' || textVideo.value || apimartVideo.value) && !promptLength.value) return true
+  if (apimartVideo.value) return selectedVideoMode.value === 'reference' && !props.references.length
+  if (apimartImage.value) return !props.inputReady
+  return props.quoteStatus !== 'ready' || !props.creditQuote || props.creditsStatus !== 'ready' || insufficientCredits.value
+})
 const creditHint = computed(() => {
   if (!props.persistenceEnabled) return '请先使用已保存画布，才能生成并使用测试积分。'
   if (props.quoteStatus === 'error') return `无法获取报价：${props.quoteError}`
@@ -80,19 +120,24 @@ const referenceSummary = computed(() => {
   const max = videoDefinition.value.maxReferences
   return `图片 ${props.references.filter((r) => r.kind === 'image').length}/${max.image} · 视频 ${props.references.filter((r) => r.kind === 'video').length}/${max.video} · 音频 ${props.references.filter((r) => r.kind === 'audio').length}/${max.audio}`
 })
+// 目录节点的参考素材说明来自选中模型的能力信息，缺失时说明尚未提供。
+const apimartReferenceHint = computed(() => apimartReferenceSummary(apimartModel.value))
 
 const layout = computed(() => {
   const margin = 16
   const width = Math.min(expanded.value ? 840 : 660, windowSize.value.width - margin * 2)
   const videoHeight = (windowSize.value.width <= 600 ? 306 : 242) + (props.references.length ? 70 : 0)
   const imageHeight = (props.references.length ? 282 : 222) + (windowSize.value.width <= 600 ? 38 : 0)
-  const height = Math.min(expanded.value ? 468 : props.kind === 'video' ? videoHeight + 28 : imageHeight, windowSize.value.height - margin * 2)
+  const baseHeight = props.kind === 'video' ? videoHeight + 28 : imageHeight
   const maxX = windowSize.value.width - width - margin
   const below = props.anchor.y + props.anchor.height + 12
+  // 放大时优先使用节点下方的可见空间，至少保留基础高度。
+  const expandedHeight = Math.min(468, Math.max(baseHeight, windowSize.value.height - below - margin))
+  const height = Math.min(expanded.value ? expandedHeight : baseHeight, windowSize.value.height - margin * 2)
   const x = props.anchor.x + (props.anchor.width - width) / 2
   return {
     left: `${Math.max(margin, Math.min(x, maxX))}px`,
-    // 始终跟在节点下方；下边缘可被视口裁切，不翻转也不移动画布。
+    // 始终跟在节点下方；基础高度放不下时允许底部裁切，不移动画布。
     top: `${below}px`,
     width: `${width}px`,
     height: `${height}px`,
@@ -172,7 +217,7 @@ onBeforeUnmount(() => {
   >
     <header class="prompt-panel-header">
       <h2 id="node-prompt-title" class="prompt-accessible-title">{{ title }}</h2>
-      <button class="prompt-reference-button" :class="{ 'is-active': selectingReferences }" type="button" :aria-pressed="selectingReferences" :disabled="kind === 'video' && selectedVideoMode === 'text'" :title="kind === 'video' && selectedVideoMode === 'text' ? '切换到全能参考后添加素材' : '添加参考素材'" @click="emit('selectReferences')">
+      <button class="prompt-reference-button" :class="{ 'is-active': selectingReferences }" type="button" :aria-pressed="selectingReferences" :disabled="textVideo" :title="textVideo ? '切换到全能参考后添加素材' : '添加参考素材'" @click="emit('selectReferences')">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
         参考
       </button>
@@ -199,8 +244,8 @@ onBeforeUnmount(() => {
         </svg>
       </button>
     </header>
-    <ol v-if="references.length" class="prompt-references" :class="{ 'is-inactive': kind === 'video' && selectedVideoMode === 'text' }" :aria-label="kind === 'video' && selectedVideoMode === 'text' ? '已连接但本次不使用的参考素材' : '已选参考'">
-      <li v-for="reference in references" :key="reference.id" class="prompt-reference" :class="{ 'has-error': reference.error }" :title="`${reference.label} · ${reference.name}${reference.error ? `：${reference.error}` : ''}`">
+    <ol v-if="references.length" class="prompt-references" :class="{ 'is-inactive': textVideo }" :aria-label="textVideo ? '已连接但本次不使用的参考素材' : '已选参考'">
+      <li v-for="reference in references" :key="reference.id" class="prompt-reference" :class="{ 'has-error': reference.error, 'is-unused': imageVideo && reference.id !== firstFrameId }" :title="`${reference.label} · ${reference.name}${reference.error ? `：${reference.error}` : ''}`">
         <img v-if="reference.kind === 'image' && reference.url" :src="reference.url" :alt="reference.name" :draggable="false" />
         <template v-else-if="reference.kind === 'video' && reference.url">
           <video :src="reference.url" :aria-label="reference.name" muted playsinline preload="metadata" tabindex="-1"></video>
@@ -208,6 +253,7 @@ onBeforeUnmount(() => {
         </template>
         <span v-else class="reference-audio-mark" :aria-label="reference.name">{{ reference.kind === 'audio' ? '♫' : '◇' }}</span>
         <span class="reference-index">{{ reference.label }}</span>
+        <button v-if="imageVideo && reference.kind === 'image'" type="button" class="first-frame-select" :aria-label="`选为起始图片 ${reference.name}`" :aria-pressed="reference.id === firstFrameId" @click="emit('update:firstFrame', reference.id)">{{ reference.id === firstFrameId ? '起始图' : '设为起始图' }}</button>
         <span v-if="reference.error" class="reference-warning" :aria-label="reference.error">!</span>
         <button class="reference-remove" type="button" :aria-label="`移除参考 ${reference.name}`" @click="emit('removeReference', reference.id)">×</button>
       </li>
@@ -216,8 +262,8 @@ onBeforeUnmount(() => {
       :key="nodeId"
       ref="input"
       :node-id="nodeId" :label="title"
-      :placeholder="kind === 'image' ? '描述画面内容、风格和细节，输入 @ 引用素材' : selectedVideoMode === 'text' ? '描述视频画面、运动和镜头，不使用参考素材' : '描述视频画面与运动，输入 @ 引用素材'"
-      :model-value="modelValue" :parts="promptParts" :candidates="kind === 'video' && selectedVideoMode === 'text' ? [] : candidates" :add-reference="addReference"
+      :placeholder="kind === 'image' ? '描述画面内容、风格和细节，输入 @ 引用素材' : textVideo ? '描述视频画面、运动和镜头，不使用参考素材' : '描述视频画面与运动，输入 @ 引用素材'"
+      :model-value="modelValue" :parts="promptParts" :candidates="textVideo ? [] : candidates" :add-reference="addReference"
       @change="emit('update:promptParts', $event)"
     />
     <p v-if="mentionError" class="generation-hint mention-generation-status" role="status">{{ mentionError }}</p>
@@ -225,23 +271,26 @@ onBeforeUnmount(() => {
     <button v-if="generation?.taskStatus === 'storage_failed'" class="retry-video-storage" type="button" @click="emit('retryStorage')">重试保存视频</button>
     <p v-if="generation?.error" class="generation-error" role="alert">{{ generation.error }}</p>
     <p v-if="canGenerate && ((kind === 'image' && referenceError) || promptLength > 2000)" class="generation-hint">{{ promptLength > 2000 ? '提示词最多 2000 字' : referenceError }}</p>
-    <p v-else-if="canGenerate && kind === 'image' && references.length && !hasMentions" class="generation-hint">将使用以上 {{ references.length }} 张参考图片，生成{{ image.count === 1 ? '单张图片' : `${image.count} 张图片` }}</p>
+    <p v-else-if="apimartImage && promptLength && !inputReady && persistenceEnabled && !mentionError" class="generation-hint">模型参数不完整或无效，请重新选择参数后生成</p>
+    <p v-else-if="kind === 'image' && references.length && !hasMentions && (canGenerate || provider === 'apimart')" class="generation-hint">将使用以上 {{ references.length }} 张参考图片{{ provider === 'ark' ? `，生成${image.count === 1 ? '单张图片' : `${image.count} 张图片`}` : '' }}</p>
     <template v-if="kind === 'video'">
-      <template v-if="selectedVideoMode === 'reference'">
+      <template v-if="provider === 'ark' && selectedVideoMode === 'reference'">
         <p class="generation-hint">{{ referenceSummary }} · 视频、音频各 ≤{{ videoDefinition.maxReferenceSeconds }} 秒</p>
         <p class="generation-hint video-reference-status" :class="{ 'has-error': referenceError }" role="status">{{ referenceError || '参考素材检查通过' }}</p>
       </template>
-      <p v-else class="generation-hint video-reference-status" :class="{ 'has-error': referenceError }" role="status">{{ referenceError || (references.length ? '文生视频不会使用已连接参考素材；切回全能参考可继续使用' : '文生视频仅使用提示词，不读取参考素材') }}</p>
+      <p v-else-if="textVideo" class="generation-hint video-reference-status" :class="{ 'has-error': referenceError }" role="status">{{ referenceError || (references.length ? '文生视频不会使用已连接参考素材；切回全能参考可继续使用' : '文生视频仅使用提示词，不读取参考素材') }}</p>
+      <p v-else-if="imageVideo" class="generation-hint video-reference-status" :class="{ 'has-error': referenceError }" role="status">{{ referenceError || '使用选定图片作为起始画面，其余参考素材保留但本次不提交' }}</p>
+      <p v-else class="generation-hint" role="status">{{ apimartReferenceHint }}<template v-if="referenceError"> · {{ referenceError }}</template></p>
     </template>
-    <p v-if="canGenerate && creditNotice" class="generation-hint credit-notice" role="status">{{ creditNotice }}</p>
-    <button v-if="canGenerate && quoteStatus === 'error' && persistenceEnabled" class="retry-quote" type="button" @click="emit('retryQuote')">重新获取报价</button>
-    <footer v-if="canGenerate" class="prompt-generation-footer">
+    <p v-if="provider === 'ark' && canGenerate && creditNotice" class="generation-hint credit-notice" role="status">{{ creditNotice }}</p>
+    <button v-if="provider === 'ark' && canGenerate && quoteStatus === 'error' && persistenceEnabled" class="retry-quote" type="button" @click="emit('retryQuote')">重新获取报价</button>
+    <footer v-if="editable" class="prompt-generation-footer">
       <div class="generation-options">
-        <ImageGenerationControls v-if="kind === 'image'" :key="nodeId" ref="imageControls" :model-value="image" :image-model="imageModel" :panel-position="layout" @update:model-value="emit('update:imageOptions', $event)" @update:image-model="emit('update:imageModel', $event)" />
-        <VideoGenerationControls v-else :key="nodeId" ref="videoControls" :model-value="video" :video-model="selectedVideoModel" :video-mode="selectedVideoMode" :reference-count="references.length" :reference-error="referenceError" :panel-position="layout" @update:model-value="emit('update:videoOptions', $event)" @update:video-model="emit('update:videoModel', $event)" @update:video-mode="emit('update:videoMode', $event)" />
+        <ImageGenerationControls v-if="kind === 'image'" :key="nodeId" ref="imageControls" :model-value="image" :image-model="imageModel" :selection="modelSelection" :panel-position="layout" @update:model-value="emit('update:imageOptions', $event)" @update:image-model="emit('update:imageModel', $event)" @choose-model="emit('choose-model', $event)" @update:parameter="(key, value) => emit('update:parameter', key, value)" />
+        <VideoGenerationControls v-else :key="nodeId" ref="videoControls" :model-value="video" :video-model="videoModel" :video-mode="selectedVideoMode" :selection="modelSelection" :reference-count="references.length" :reference-error="referenceError" :panel-position="layout" @update:model-value="emit('update:videoOptions', $event)" @update:video-model="emit('update:videoModel', $event)" @update:video-mode="emit('update:videoMode', $event)" @choose-model="emit('choose-model', $event)" @update:parameter="(key, value) => emit('update:parameter', key, value)" />
       </div>
-      <div class="generation-actions">
-        <details :key="nodeId" class="credit-cost" :class="{ 'has-error': !!creditNotice }">
+      <div v-if="canGenerate" class="generation-actions">
+        <details v-if="provider === 'ark'" :key="nodeId" class="credit-cost" :class="{ 'has-error': !!creditNotice }">
           <summary class="credit-cost-trigger" :aria-label="`查看本次积分明细：${creditHint}`" title="查看本次积分明细">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.7 1.5 3.8 8h3.5l-.6 6.5 5.5-7H8.6z" /></svg>
             <span aria-live="polite">{{ creditAmount }}</span>
@@ -253,6 +302,11 @@ onBeforeUnmount(() => {
           <svg v-else viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4" /></svg>
         </button>
       </div>
+      <div v-else class="generation-actions">
+        <button type="button" class="generate-button" disabled aria-label="生成暂未接入" title="该模型生成暂未接入">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4" /></svg>
+        </button>
+      </div>
     </footer>
   </section>
 </template>
@@ -262,6 +316,7 @@ onBeforeUnmount(() => {
 
 .node-prompt-panel { position: fixed; z-index: 35; display: flex; flex-direction: column; padding: 12px 16px 18px; border: 1px solid #383838; border-radius: 18px; background: #262626; box-shadow: 0 8px 24px #0003; }
 .node-prompt-panel.is-selecting { z-index: 15; }
+.node-prompt-panel:not(.is-selecting):has([aria-haspopup][aria-expanded="true"]) { z-index: 45; }
 .node-prompt-panel:focus-within { border-color: #505050; }
 .prompt-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; }
 .prompt-reference-button { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 28px; padding: 0 9px 0 6px; border: 0; border-radius: 14px; background: #353535; color: #d6d6d6; cursor: pointer; font-size: 12px; }
@@ -273,6 +328,9 @@ onBeforeUnmount(() => {
 .prompt-references.is-inactive { opacity: .52; }
 .prompt-reference { position: relative; flex: none; width: 48px; height: 48px; border: 1px solid #525252; border-radius: 8px; background: #1a1a1a; }
 .prompt-reference.has-error { border-color: #ad875a; }
+.prompt-reference.is-unused { opacity: .6; }
+.first-frame-select { position: absolute; bottom: 0; left: 0; width: 100%; padding: 2px 0; border: 0; border-radius: 0 0 7px 7px; background: #242424de; color: #ddd; font-size: 9px; cursor: pointer; }
+.first-frame-select[aria-pressed="true"] { background: #3c526b; color: #fff; }
 .reference-audio-mark { display: grid; place-items: center; height: 100%; color: #bed0e8; font-size: 26px; }
 .reference-warning { position: absolute; right: 3px; bottom: 2px; color: #efd0a7; font-size: 13px; font-weight: 700; }
 .video-reference-status { max-height: 42px; overflow-y: auto; line-height: 1.6; }

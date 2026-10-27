@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,18 +42,21 @@ func VideoSpec(model string) (VideoModelSpec, bool) {
 type VideoReference struct{ Kind, URL string }
 type VideoRequest struct {
 	Prompt, Model, Mode, Resolution, Ratio string
+	Parameters                             map[string]any // Native basic fields for APIMart; never forwarded by Ark.
+	TaskID                                 string         // Local diagnostic correlation; never sent to Ark.
 	Duration                               int
 	GenerateAudio                          bool
 	References                             []VideoReference
 }
 type VideoResponse struct {
-	ID              string  `json:"id"`
-	Status          string  `json:"status"`
-	Model           string  `json:"model"`
-	Resolution      string  `json:"resolution"`
-	Ratio           string  `json:"ratio"`
-	Duration        int     `json:"duration"`
-	FramesPerSecond float64 `json:"framespersecond"`
+	Failure         *APIError `json:"-"` // Translated failure only; no raw provider message.
+	ID              string    `json:"id"`
+	Status          string    `json:"status"`
+	Model           string    `json:"model"`
+	Resolution      string    `json:"resolution"`
+	Ratio           string    `json:"ratio"`
+	Duration        int       `json:"duration"`
+	FramesPerSecond float64   `json:"framespersecond"`
 	Content         struct {
 		URL string `json:"video_url"`
 	} `json:"content"`
@@ -109,26 +113,31 @@ func (c *Client) CreateVideo(ctx context.Context, in VideoRequest) (string, erro
 	resp, err := c.http.Do(req)
 	unknown := &APIError{502, "SUBMISSION_UNKNOWN", "无法确认视频是否已受理，可能已计费；请核查任务，未自动重新提交。"}
 	if err != nil {
+		category := "network"
+		if errors.Is(err, context.DeadlineExceeded) {
+			category = "timeout"
+			unknown.Message = "视频提交超时，无法确认模型是否已受理，可能已计费；请核查任务，未自动重新提交。"
+		}
+		c.logVideoFailure("CreateVideo", 0, videoErrorEnvelope{}, nil, in.TaskID, "", unknown.Code, category)
 		return "", unknown
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 {
-		code, message := "VIDEO_REJECTED", "模型未接受视频请求，请检查参考素材、提示词及模型权限。"
-		if resp.StatusCode == 401 || resp.StatusCode == 403 {
-			code, message = "MODEL_AUTH_FAILED", "模型鉴权或授权失败，请检查 API Key 和模型开通状态。"
-		}
-		if resp.StatusCode == 429 {
-			code, message = "MODEL_LIMITED", "模型频率或额度受限，请检查方舟控制台。"
-		}
-		return "", &APIError{422, code, message}
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		detail, bodyState := readVideoError(resp.Body)
+		// 408/499 and 5xx cannot prove the POST was rejected before acceptance.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 && resp.StatusCode != 499 {
+			failure := videoSubmissionError(resp.StatusCode, detail.Error, in)
+			c.logVideoFailure("CreateVideo", resp.StatusCode, detail, resp.Header, in.TaskID, "", failure.Code, bodyState)
+			return "", failure
+		}
+		c.logVideoFailure("CreateVideo", resp.StatusCode, detail, resp.Header, in.TaskID, "", unknown.Code, bodyState)
 		return "", unknown
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out) != nil || !providerIDPattern.MatchString(out.ID) {
+		c.logVideoFailure("CreateVideo", resp.StatusCode, videoErrorEnvelope{}, resp.Header, in.TaskID, "", unknown.Code, "invalid_task_id")
 		return "", unknown
 	}
 	return out.ID, nil
@@ -148,6 +157,8 @@ func (c *Client) QueryVideo(ctx context.Context, id string) (VideoResponse, erro
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		detail, bodyState := readVideoError(resp.Body)
+		c.logVideoFailure("QueryVideo", resp.StatusCode, detail, resp.Header, "", id, "VIDEO_POLL_RETRY", bodyState)
 		delay := time.Duration(0)
 		if n, e := strconv.Atoi(resp.Header.Get("Retry-After")); e == nil && n > 0 {
 			delay = time.Duration(n) * time.Second
@@ -156,8 +167,22 @@ func (c *Client) QueryVideo(ctx context.Context, id string) (VideoResponse, erro
 		}
 		return out, &PollError{delay}
 	}
-	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out) != nil || out.ID != id {
+	var wire struct {
+		VideoResponse
+		Error json.RawMessage `json:"error"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&wire) != nil || wire.ID != id {
 		return VideoResponse{}, &PollError{}
+	}
+	out = wire.VideoResponse
+	if out.Status == "failed" {
+		var detail videoProviderError
+		_ = json.Unmarshal(wire.Error, &detail)
+		out.Failure = &APIError{422, "PROVIDER_FAILED", "模型视频生成失败，具体原因暂未识别；请联系管理员查看任务诊断记录。"}
+		if reason, message := videoFailureReason(detail, VideoRequest{}); reason != "" {
+			out.Failure = &APIError{422, "PROVIDER_" + reason, message}
+		}
+		c.logVideoFailure("QueryVideo", resp.StatusCode, videoErrorEnvelope{Error: detail}, resp.Header, "", id, out.Failure.Code, "task_failed")
 	}
 	return out, nil
 }

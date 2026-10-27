@@ -52,12 +52,12 @@ func (s *Store) RunWorker(parent context.Context, generator Generator, objects R
 		ready <- err
 		return err
 	}
-	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET status='interrupted',credit_status=CASE WHEN credit_status='reserved' THEN 'review' ELSE credit_status END,error='{"code":"WORKER_INTERRUPTED","message":"后端在生成期间中断，供应商可能已计费；请核查后手动决定是否重新生成。"}',finished_at=now(),updated_at=now() WHERE kind='image' AND status='running'`)
+	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET status='interrupted',credit_status=CASE WHEN credit_status='reserved' THEN 'review' ELSE credit_status END,error='{"code":"WORKER_INTERRUPTED","message":"后端在生成期间中断，供应商可能已计费；请核查后手动决定是否重新生成。"}',finished_at=now(),updated_at=now() WHERE kind='image' AND status='running' AND COALESCE(input->>'provider','') <> 'apimart'`)
 	if err != nil {
 		ready <- err
 		return err
 	}
-	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET status='interrupted',credit_status=CASE WHEN credit_status='reserved' THEN 'review' ELSE credit_status END,error='{"code":"SUBMISSION_UNKNOWN","message":"视频提交期间服务中断，可能已计费；请核查任务，未自动重新提交。"}',finished_at=now(),updated_at=now() WHERE kind='video' AND status='submitting'`)
+	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET status='interrupted',credit_status=CASE WHEN credit_status='reserved' THEN 'review' ELSE credit_status END,error='{"code":"SUBMISSION_UNKNOWN","message":"提交期间服务中断，可能已计费；请核查任务，未自动重新提交。"}',finished_at=now(),updated_at=now() WHERE status='submitting' AND (kind='video' OR (kind='image' AND input->>'provider'='apimart'))`)
 	if err != nil {
 		ready <- err
 		return err

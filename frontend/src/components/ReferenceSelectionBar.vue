@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import type { MediaKind } from '../canvas/media'
+import { computed } from 'vue'
+import { mediaKindLabel, type MediaKind } from '../canvas/media'
 
-defineProps<{ kind: MediaKind; count: number; feedback: string }>()
+const props = defineProps<{ allowedKinds: readonly MediaKind[]; count: number; feedback: string }>()
 const emit = defineEmits<{ returnToNode: []; close: [] }>()
+const mediaLabel = computed(() => {
+  const labels = props.allowedKinds.map((kind) => mediaKindLabel[kind])
+  return labels.length < 2 ? labels.join('') : `${labels.slice(0, -1).join('、')}和${labels.at(-1)}`
+})
 </script>
 
 <template>
@@ -10,7 +15,7 @@ const emit = defineEmits<{ returnToNode: []; close: [] }>()
     <svg class="reference-selection-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m20 4-6 16-4-6-6-4L20 4ZM10 14 20 4" /></svg>
     <div class="reference-selection-copy">
       <strong>从画布选择参考</strong>
-      <span role="status" aria-live="polite">{{ feedback || `可选${kind === 'image' ? '图片' : '图片、视频和音频'} · 已选 ${count} 项` }}</span>
+      <span role="status" aria-live="polite">{{ feedback || `可选${mediaLabel} · 已选 ${count} 项` }}</span>
     </div>
     <button class="reference-return" type="button" @click="emit('returnToNode')">返回节点</button>
     <button class="reference-close" type="button" aria-label="结束参考选择" title="结束选择（Esc），保留已选参考" @click="emit('close')">

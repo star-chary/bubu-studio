@@ -1,0 +1,524 @@
+[
+  {
+    "modelId": "seedream-5-0-lite",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "2:1",
+          "1:2",
+          "21:9"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "2K",
+          "3K",
+          "4K"
+        ],
+        "default": "2K"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "seedream-5-0-pro",
+    "maxReferenceImages": 10,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "2:1",
+          "1:2",
+          "21:9"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1K",
+          "1.5K",
+          "2K"
+        ],
+        "default": "1K"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "gemini-nano-banana-2.1",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "1:1",
+          "4:3",
+          "3:4",
+          "16:9",
+          "9:16",
+          "3:2",
+          "2:3",
+          "4:5",
+          "5:4",
+          "21:9",
+          "1:4",
+          "4:1",
+          "1:8",
+          "8:1"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "gpt-image-2.5-flare",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "1:1",
+          "4:3",
+          "3:4",
+          "16:9",
+          "9:16",
+          "3:2",
+          "2:3",
+          "4:5",
+          "5:4",
+          "21:9",
+          "2:1",
+          "1:2",
+          "3:1",
+          "1:3",
+          "9:21"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1k",
+          "2k",
+          "4k"
+        ],
+        "default": "1k"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "gpt-image-2.5-sunburst",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "1:1",
+          "4:3",
+          "3:4",
+          "16:9",
+          "9:16",
+          "3:2",
+          "2:3",
+          "4:5",
+          "5:4",
+          "21:9",
+          "2:1",
+          "1:2",
+          "3:1",
+          "1:3",
+          "9:21"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1k",
+          "2k",
+          "4k"
+        ],
+        "default": "1k"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "flux-3-image",
+    "maxReferenceImages": 10,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "21:9",
+          "2:1",
+          "16:9",
+          "3:2",
+          "7:5",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "5:7",
+          "2:3",
+          "9:16",
+          "1:2",
+          "9:21"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "768sq",
+          "1k",
+          "1.5k",
+          "2k",
+          "4k"
+        ],
+        "default": "1k"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "flux-3-image-klein",
+    "maxReferenceImages": 10,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "21:9",
+          "2:1",
+          "16:9",
+          "3:2",
+          "7:5",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "5:7",
+          "2:3",
+          "9:16",
+          "1:2",
+          "9:21"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "768sq",
+          "1k",
+          "1.5k",
+          "2k",
+          "4k"
+        ],
+        "default": "1k"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "qwen-image-3.0-pro",
+    "maxReferenceImages": 3,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1K",
+          "2K"
+        ],
+        "default": "1K"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "z-image-turbo",
+    "maxReferenceImages": 0,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1K",
+          "2K"
+        ],
+        "default": "1K"
+      }
+    ]
+  },
+  {
+    "modelId": "gemini-3-pro-image-preview",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "1:1",
+          "4:3",
+          "3:4",
+          "16:9",
+          "9:16",
+          "3:2",
+          "2:3",
+          "4:5",
+          "5:4",
+          "21:9"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "flux-2-flex",
+    "maxReferenceImages": 8,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "21:9",
+          "9:21"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1MP",
+          "2MP",
+          "3MP",
+          "4MP"
+        ],
+        "default": "2MP"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "flux-2-max",
+    "maxReferenceImages": 8,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "auto",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "21:9",
+          "9:21"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": [
+          "1MP",
+          "2MP",
+          "3MP",
+          "4MP"
+        ],
+        "default": "2MP"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
+    "modelId": "midjourney",
+    "maxReferenceImages": 14,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "3:2",
+          "2:3",
+          "21:9"
+        ],
+        "default": "1:1"
+      },
+      {
+        "key": "version",
+        "kind": "enum",
+        "enum": [
+          "8.2",
+          "8.1",
+          "7"
+        ],
+        "default": "7"
+      },
+      {
+        "key": "niji",
+        "kind": "boolean",
+        "default": false
+      },
+      {
+        "key": "hd",
+        "kind": "boolean",
+        "default": false
+      }
+    ]
+  }
+]

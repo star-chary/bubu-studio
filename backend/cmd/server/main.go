@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"frame-space/backend/internal/apimart"
 	"frame-space/backend/internal/ark"
 	"frame-space/backend/internal/persistence"
 	"frame-space/backend/internal/server"
@@ -27,6 +28,9 @@ func main() {
 		log.Fatal(err)
 	}
 	if _, err := server.TrustedProxiesFromEnv(); err != nil {
+		log.Fatal(err)
+	}
+	if _, err := server.MCPConfigFromEnv(); err != nil {
 		log.Fatal(err)
 	}
 	workerConfig, err := persistence.WorkerConfigFromEnv()
@@ -51,7 +55,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var db *persistence.Store
-	generator := ark.NewClient(os.Getenv("ARK_API_KEY"))
+	apimartClient := apimart.NewClient(os.Getenv("APIMART_API_KEY"))
+	generator := &generators{Client: ark.NewClient(os.Getenv("ARK_API_KEY")), apimartVideo: apimartClient, apimartImage: apimartClient}
 	workerDone := make(chan struct{})
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		connectCtx, cancel := context.WithTimeout(ctx, 20*time.Second)

@@ -3,8 +3,6 @@ import AccountControl from '../components/AccountControl.vue'
 import { nextTick, onMounted, ref } from 'vue'
 import { persistenceRequest, writeJSON, type CanvasSummary, type SavedCanvas } from '../api/persistence'
 
-const props = defineProps<{ autoOpenCreate?: boolean }>()
-const emit = defineEmits<{ autoOpenHandled: [] }>()
 const canvases = ref<CanvasSummary[]>([])
 const loading = ref(true)
 const enabled = ref(false)
@@ -76,10 +74,7 @@ function preview(canvas: CanvasSummary) {
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
-onMounted(() => {
-  void load()
-  if (props.autoOpenCreate) void openCreate().finally(() => emit('autoOpenHandled'))
-})
+onMounted(() => { void load() })
 </script>
 
 <template>

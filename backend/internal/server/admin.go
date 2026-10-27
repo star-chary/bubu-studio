@@ -22,14 +22,15 @@ func registerAdmin(router *gin.Engine, db *persistence.Store) {
 	})
 	api.GET("/me", func(c *gin.Context) {
 		session, _ := c.Get("session")
-		c.JSON(200, gin.H{"session": session, "maxGrantPoints": persistence.MaxAdminGrantPoints, "maxReasonLength": persistence.MaxGrantReasonLength})
+		mcpConfig, _ := MCPConfigFromEnv()
+		c.JSON(200, gin.H{"session": session, "maxGrantPoints": persistence.MaxAdminGrantPoints, "maxReasonLength": persistence.MaxGrantReasonLength, "mcpEnabled": mcpConfig.URL != ""})
 	})
 	api.GET("/users", func(c *gin.Context) {
 		limit, offset, ok := adminPagination(c)
 		if !ok {
 			return
 		}
-		users, total, err := db.AdminUsers(c.Request.Context(), c.Query("q"), limit, offset)
+		users, total, err := db.AdminUsersForActor(c.Request.Context(), c.GetString("userID"), c.Query("q"), limit, offset)
 		if err != nil {
 			adminFailure(c, err)
 			return

@@ -173,6 +173,20 @@ func (s *Store) Node(ctx context.Context, canvasID, nodeID string) (Node, error)
 	}
 	return Node{}, ErrNotFound
 }
+
+// RequireGenerationEnabled 结合已保存节点确认当前选择是否允许进入现有生成链路。
+// 判断依据是节点草稿的供应商身份，而不是客户端提交的 generationEnabled 标记；
+// 也不因模型 ID 与 Ark 相同而按 Ark 处理。历史任务查询与幂等返回不受影响。
+func (s *Store) RequireGenerationEnabled(ctx context.Context, canvasID, nodeID string) error {
+	node, err := s.Node(ctx, canvasID, nodeID)
+	if err != nil {
+		return err
+	}
+	if node.Data.ModelSelection != nil && !enabledAPIMartVideoNode(node) && !enabledAPIMartImageNode(node) {
+		return ErrModelGenerationNotEnabled
+	}
+	return nil
+}
 func (s *Store) RecordAsset(ctx context.Context, a storage.Asset) error {
 	_, err := s.Pool.Exec(ctx, `INSERT INTO assets(key,canvas_id,node_id,metadata) VALUES($1,$2,$3,$4) ON CONFLICT(key) DO NOTHING`, a.Key, a.CanvasID, a.NodeID, a)
 	return err
@@ -224,10 +238,13 @@ func (s *Store) CreateVideoTask(ctx context.Context, id string, input Input) (Ta
 	return s.createTask(ctx, id, input, "video")
 }
 func (s *Store) createTask(ctx context.Context, id string, input Input, kind string) (Task, error) {
-	if kind == "image" {
+	if kind == "image" && input.Provider != ProviderAPIMart {
 		if _, err := ark.ResolveImageOptions(input.Model, input.ImageOptions); err != nil {
 			return Task{}, ErrInvalid
 		}
+	}
+	if kind == "image" && input.Provider == ProviderAPIMart && normalizeAPIMartImageInput(&input) != nil {
+		return Task{}, ErrInvalid
 	}
 	if kind == "video" && NormalizeVideoInput(&input) != nil {
 		return Task{}, ErrInvalid
@@ -248,6 +265,9 @@ func (s *Store) createTask(ctx context.Context, id string, input Input, kind str
 	}
 	if node.Data.Kind != kind || node.Data.Origin == "upload" {
 		return Task{}, ErrInvalid
+	}
+	if err := validateTaskProvider(node, input, kind); err != nil {
+		return Task{}, err
 	}
 	bindings, err := s.bindReferences(ctx, input, kind)
 	if err != nil {

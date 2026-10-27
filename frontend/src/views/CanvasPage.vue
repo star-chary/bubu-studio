@@ -18,7 +18,10 @@ import { useNodeReferences } from '../canvas/useNodeReferences'
 import { useNodeAlignment } from '../canvas/useNodeAlignment'
 import type { MediaKind } from '../canvas/media'
 import { mediaSource } from '../canvas/mediaActions'
-import { DEFAULT_IMAGE_MODEL, normalizeImageOptions } from '../models/imageModels'
+import { DEFAULT_IMAGE_MODEL, normalizeImageOptions, type ImageModelId } from '../models/imageModels'
+import { type VideoModelId } from '../models/videoModels'
+import { apimartVideoEnabled } from '../models/apimartVideo'
+import { apimartImageCount, apimartImageEnabled } from '../models/apimartImage'
 import { INITIAL_VIEWPORT, MAX_ZOOM, MIN_ZOOM } from '../canvas/viewport'
 import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../api/credits'
 
@@ -26,7 +29,7 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
 const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate, getSelectedNodes, addSelectedNodes, removeSelectedNodes } = useVueFlow(flowId)
-const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateVideoOptions, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const { guides: alignmentGuides, start: startAlignment, drag: alignNode, stop: stopAlignment } = useNodeAlignment(flowId,
@@ -83,9 +86,17 @@ const activeMediaNode = computed(() => nodes.value.find((node) => node.id === ac
 const previewNode = computed(() => nodes.value.find((node) => node.id === previewNodeId.value))
 const fullscreenSource = computed(() => previewNode.value ? mediaSource(previewNode.value.data) : undefined)
 const activeReferences = computed(() => activePromptId.value ? referencesFor(activePromptId.value) : [])
+const referenceKinds = computed<MediaKind[]>(() => referenceTarget.value?.data.kind === 'image' || apimartVideoEnabled(referenceTarget.value?.data.modelSelection) ? ['image'] : ['image', 'video', 'audio'])
+const activeCanGenerate = computed(() => {
+  const data = activePromptNode.value?.data
+  return !!data && data.origin !== 'upload' && (!data.modelSelection || (data.kind === 'video' && apimartVideoEnabled(data.modelSelection)) || (data.kind === 'image' && apimartImageEnabled(data.modelSelection)))
+})
+const activeInputReady = computed(() => !!activePromptNode.value && !!generationInputFor(activePromptNode.value.id))
 const quoteRequest = computed(() => {
   const node = activePromptNode.value
   if (auth.status !== 'authenticated' || !node || node.data.kind === 'audio') return null
+  // 目录草稿节点（含未选择状态）不进入旧 Ark 报价链路。
+  if (node.data.modelSelection) return null
   const input = generationInputFor(node.id)
   if (!input) return null
   const kind = node.data.kind
@@ -135,12 +146,31 @@ watch(saveError, (error, previous) => { if (previous && !error && quoteStatus.va
 onBeforeUnmount(() => { quoteSequence++; if (quoteTimer) clearTimeout(quoteTimer); quoteController?.abort() })
 async function generateActiveNode() {
   const node = activePromptNode.value
+  if (node && ((node.data.kind === 'video' && apimartVideoEnabled(node.data.modelSelection)) || (node.data.kind === 'image' && apimartImageEnabled(node.data.modelSelection)))) {
+    const input = generationInputFor(node.id)
+    if (input) await generateNode(node.id, { input, ...(node.data.kind === 'image' ? { count: apimartImageCount(node.data.modelSelection!) } : {}) })
+    return
+  }
   const request = quoteRequest.value
   const quote = creditQuote.value
-  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
+  // 目录草稿节点没有报价请求；公共生成入口再检查一次，不只在按钮上禁用。
+  if (!node || node.data.modelSelection || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
   await generateNode(node.id, { input: request.input, quote, count: request.count })
   await refreshCredits()
   if (quoteRequest.value?.key === request.key) refreshQuote()
+}
+
+function chooseNodeModel(nodeId: string, choice: { provider: 'ark' | 'apimart'; modelId: string }) {
+  const node = activePromptNode.value
+  if (!node || node.id !== nodeId) return
+  if (choice.provider === 'apimart') {
+    updateModelSelection(nodeId, choice.modelId)
+    return
+  }
+  // 从目录模型切回 Ark：取消旧报价显示，回到历史 Ark 字段。
+  refreshQuote()
+  if (node.data.kind === 'video') updateVideoModel(nodeId, choice.modelId as VideoModelId)
+  else updateImageModel(nodeId, choice.modelId as ImageModelId)
 }
 const referenceSources = computed(() => new Set(referenceEdges.value.map((edge) => edge.source)))
 function nodeAnchor(node: typeof activePromptNode.value) {
@@ -382,7 +412,7 @@ function resetViewport() {
     />
     <ReferenceSelectionBar
       v-if="referenceTarget"
-      :kind="referenceTarget.data.kind"
+      :allowed-kinds="referenceKinds"
       :count="activeReferences.length"
       :feedback="feedback"
       @return-to-node="returnToNode"
@@ -416,11 +446,15 @@ function resetViewport() {
       :video-options="activePromptNode.data.videoOptions"
       :video-model="activePromptNode.data.videoModel"
       :video-mode="activePromptNode.data.videoMode"
+      :first-frame-id="activePromptNode.data.firstFrameId"
       :image-model="activePromptNode.data.imageModel ?? DEFAULT_IMAGE_MODEL"
       :image-options="activePromptNode.data.imageOptions"
+      :model-selection="activePromptNode.data.modelSelection"
       :references="activeReferences"
       :selecting-references="isSelecting"
-      :can-generate="activePromptNode.data.origin !== 'upload'"
+      :can-generate="activeCanGenerate"
+      :input-ready="activeInputReady"
+      :editable="activePromptNode.data.origin !== 'upload'"
       :generation="activePromptNode.data.generation"
       :media-loading="activePromptNode.data.status === 'loading'"
       :reference-error="referenceErrorFor(activePromptNode.id)"
@@ -436,8 +470,11 @@ function resetViewport() {
       @update:video-options="updateVideoOptions(activePromptNode.id, $event)"
       @update:video-model="updateVideoModel(activePromptNode.id, $event)"
       @update:video-mode="updateVideoMode(activePromptNode.id, $event)"
+      @update:first-frame="updateFirstFrame(activePromptNode.id, $event)"
       @update:image-model="updateImageModel(activePromptNode.id, $event)"
       @update:image-options="updateImageOptions(activePromptNode.id, $event)"
+      @choose-model="chooseNodeModel(activePromptNode!.id, $event)"
+      @update:parameter="(key, value) => updateModelParameter(activePromptNode!.id, key, value)"
       @select-references="selectReferences"
       @remove-reference="removeReference(activePromptNode.id, $event)"
       @generate="generateActiveNode"

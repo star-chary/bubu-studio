@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"frame-space/backend/internal/apimart"
 	"frame-space/backend/internal/ark"
 	"frame-space/backend/internal/storage"
 )
@@ -14,6 +15,7 @@ type Reference struct {
 	NodeID   string `json:"nodeId"`
 	AssetKey string `json:"assetKey"`
 	Kind     string `json:"kind"`
+	Role     string `json:"role,omitempty"`
 }
 
 // CompilePrompt replaces stable node identities only. User text is never parsed
@@ -33,6 +35,9 @@ func CompilePrompt(input Input, kind string, bindings []Reference) (string, erro
 		counts[r.Kind]++
 		prefix := map[string]string{"image": "图片", "video": "视频", "audio": "音频"}[r.Kind]
 		labels[r.NodeID] = fmt.Sprintf("%s%d", prefix, counts[r.Kind])
+		if kind == "video" && input.Provider == ProviderAPIMart {
+			labels[r.NodeID] = apimart.ReferenceLabel(input.Model, r.Kind, counts[r.Kind])
+		}
 		kinds[r.NodeID] = r.Kind
 	}
 	var out strings.Builder
@@ -64,7 +69,7 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 		}
 	}
 	if kind == "video" {
-		spec, ok := ark.VideoSpec(input.Model)
+		spec, ok := videoSpec(input)
 		if !ok || len(input.ReferenceKeys) > 0 || (input.Mode == "text" && len(refs) != 0) || (input.Mode == "reference" && (len(refs) == 0 || len(refs) > spec.MaxImages+spec.MaxVideos+spec.MaxAudios)) {
 			return nil, ErrInvalid
 		}
@@ -91,7 +96,7 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 		refs[i].NodeID = a.NodeID
 	}
 	if kind == "video" {
-		spec, _ := ark.VideoSpec(input.Model)
+		spec, _ := videoSpec(input)
 		if counts["image"] > spec.MaxImages || counts["video"] > spec.MaxVideos || counts["audio"] > spec.MaxAudios || (input.Model != ark.VideoModel && counts["image"]+counts["video"] == 0 && input.Mode == "reference") {
 			return nil, ErrInvalid
 		}
@@ -99,7 +104,21 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 	return refs, nil
 }
 
+func videoSpec(in Input) (ark.VideoModelSpec, bool) {
+	if in.Provider == ProviderAPIMart {
+		m, ok := apimart.VideoDefinition(in.Model)
+		return ark.VideoModelSpec{MaxDuration: 30, MaxImages: m.ReferenceLimit(in.Mode), MaxReferenceSeconds: 30}, ok && m.Supports(in.Mode)
+	}
+	if in.Provider != "" && in.Provider != "ark" {
+		return ark.VideoModelSpec{}, false
+	}
+	return ark.VideoSpec(in.Model)
+}
+
 func normalizeVideoOptions(in *Input) error {
+	if in.Provider == "ark" {
+		in.Provider = "" // Preserve equality with saved legacy task inputs.
+	}
 	if in.Model == "" {
 		in.Model = ark.VideoModel
 	}
@@ -112,8 +131,23 @@ func normalizeVideoOptions(in *Input) error {
 	if in.Ratio == "" {
 		in.Ratio = "16:9"
 	}
+	if in.Provider == ProviderAPIMart {
+		r := ark.VideoRequest{Model: in.Model, Mode: in.Mode, Prompt: in.Prompt, Parameters: in.Parameters, Resolution: in.Resolution, Ratio: in.Ratio, Duration: in.Duration, GenerateAudio: in.GenerateAudio == nil || *in.GenerateAudio}
+		if !apimart.NormalizeVideoRequest(&r) {
+			return ErrInvalid
+		}
+		if in.Parameters != nil {
+			in.Parameters = r.Parameters
+		}
+		in.Resolution, in.Ratio, in.Duration = r.Resolution, r.Ratio, r.Duration
+		in.GenerateAudio = &r.GenerateAudio
+		return nil
+	}
+	if in.Parameters != nil {
+		return ErrInvalid
+	}
 	// The HTTP boundary supplies defaults only for omitted numeric/bool fields.
-	spec, ok := ark.VideoSpec(in.Model)
+	spec, ok := videoSpec(*in)
 	if !ok || (in.Mode != "reference" && in.Mode != "text") || (in.Resolution != "480p" && in.Resolution != "720p") || in.Duration < 4 || in.Duration > spec.MaxDuration {
 		return ErrInvalid
 	}
@@ -143,6 +177,14 @@ func NormalizeVideoInput(in *Input) error {
 		}
 	} else if len(in.References) == 0 || len(in.References) > 50 || len(in.ReferenceKeys) != 0 {
 		return ErrInvalid
+	}
+	if in.Mode == "image" && (in.Provider != ProviderAPIMart || len(in.References) != 1 || in.References[0].Kind != "image" || in.References[0].Role != "first_frame") {
+		return ErrInvalid
+	}
+	for _, ref := range in.References {
+		if in.Mode != "image" && ref.Role != "" {
+			return ErrInvalid
+		}
 	}
 	if len(in.PromptParts) == 0 {
 		in.Prompt = strings.TrimSpace(in.Prompt)

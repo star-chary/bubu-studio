@@ -121,9 +121,9 @@ test('窄屏与缩放下输入框始终在节点下方，允许底部裁切，�
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
   await addNode(page, '图片', 340, 620)
-  await page.mouse.click(350, 670)
   const panel = page.getByRole('dialog', { name: '图片提示词' })
   const edgeNode = page.getByRole('article', { name: '图片节点 1', exact: true })
+  await edgeNode.click({ position: { x: 10, y: 50 } })
   async function expectBelowNode(node: ReturnType<Page['locator']>, width: number) {
     await expect.poll(async () => {
       const box = await panel.boundingBox()

@@ -17,6 +17,15 @@ import (
 // Reference keys come from saved canvas assets, never arbitrary client URLs.
 // Canvas scoping is not user authorization; the local MVP has no accounts yet.
 func (s *Store) ReferenceURLs(ctx context.Context, scope Scope, keys []string) ([]string, error) {
+	return s.referenceURLs(ctx, scope, keys, false)
+}
+
+// Asynchronous APIMart jobs may wait in the provider queue before reading input.
+func (s *Store) APIMartImageReferenceURLs(ctx context.Context, scope Scope, keys []string) ([]string, error) {
+	return s.referenceURLs(ctx, scope, keys, true)
+}
+
+func (s *Store) referenceURLs(ctx context.Context, scope Scope, keys []string, asynchronous bool) ([]string, error) {
 	if ValidateScope(scope) != nil || len(keys) == 0 || len(keys) > 14 {
 		return nil, &Error{400, "INVALID_REFERENCES", "参考图片参数无效。"}
 	}
@@ -50,7 +59,16 @@ func (s *Store) ReferenceURLs(ctx context.Context, scope Scope, keys []string) (
 		if "image/"+format != media.mime {
 			return nil, &Error{422, "INVALID_REFERENCE_IMAGE", "参考图片实际格式与保存信息不一致，请重新上传。"}
 		}
-		address, err := s.objects.SignGet(ctx, key)
+		var address string
+		if asynchronous {
+			signer, ok := s.objects.(TimedSigner)
+			if !ok {
+				return nil, &Error{503, "REFERENCE_SIGN_FAILED", "未配置异步参考图片签名服务。"}
+			}
+			address, err = signer.SignGetFor(ctx, key, 2*time.Hour)
+		} else {
+			address, err = s.objects.SignGet(ctx, key)
+		}
 		if err != nil {
 			return nil, &Error{502, "REFERENCE_SIGN_FAILED", "无法准备参考图片，请稍后重试。"}
 		}

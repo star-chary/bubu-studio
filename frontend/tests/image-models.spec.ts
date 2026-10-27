@@ -1,31 +1,31 @@
 import type { Page } from '@playwright/test'
-import { expect, test } from './setup'
+import { expect, test, addNodeViaContextMenu } from './setup'
 
 const lite = 'Doubao-Seedream-5.0-lite'
 const pro = 'Doubao-Seedream-5.0-pro'
+const gptImage = 'GPT Image 2.5 Flare（APIMart）'
+const seedreamPro = 'Niji 7（APIMart）'
 const selector = (page: Page) => page.getByRole('button', { name: /^选择模型/ })
 
-async function addImage(page: Page, x: number, y: number) {
-  await page.mouse.click(x, y, { button: 'right' })
-  await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
-  await page.getByRole('menuitem', { name: '图片', exact: true }).click()
-}
-
-test('模型列表只有 Lite 和 Pro，选择按节点保存，点击空白和 Esc 分层关闭', async ({ page }, testInfo) => {
+test('模型列表分组展示方舟与 APIMart，选择按节点保存，点击空白和 Esc 分层关闭', async ({ page }, testInfo) => {
   let calls = 0
   await page.route('**/api/images/generations', (route) => { calls++; return route.abort() })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
-  await addImage(page, 100, 150)
-  await addImage(page, 820, 150)
+  await addNodeViaContextMenu(page, 100, 150, '图片')
+  await addNodeViaContextMenu(page, 820, 150, '图片')
   const first = page.getByRole('article', { name: '图片节点 1', exact: true })
   const second = page.getByRole('article', { name: '图片节点 2', exact: true })
+  // 新节点默认未选择模型，不回退到 Ark 默认。
   await first.click({ position: { x: 70, y: 80 } })
-  await expect(selector(page)).toContainText(lite)
+  await expect(selector(page)).toContainText('选择模型')
   await selector(page).click()
   const menu = page.getByRole('listbox', { name: '图片模型' })
-  await expect(menu.getByRole('option')).toHaveText([/Doubao-Seedream-5.0-lite/, /Doubao-Seedream-5.0-pro/])
-  await expect(menu.getByRole('option', { name: lite, exact: true })).toHaveAttribute('aria-selected', 'true')
-  expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThan((await selector(page).boundingBox())!.y)
+  await expect(menu.getByRole('option')).toHaveCount(18)
+  await expect(menu.getByRole('option', { name: lite, exact: true })).toBeVisible()
+  await expect(menu.getByRole('option', { name: gptImage, exact: true })).toBeVisible()
+  await expect(menu.getByRole('option', { name: seedreamPro, exact: true })).toBeVisible()
+  await expect(menu.getByRole('option', { name: gptImage, exact: true })).toHaveText('GPT Image 2.5 Flare')
+  expect((await menu.boundingBox())!.y).toBeGreaterThanOrEqual(16)
   await menu.getByRole('option', { name: pro, exact: true }).click()
   await expect(menu).toHaveCount(0)
   await expect(selector(page)).toContainText(pro)
@@ -40,13 +40,15 @@ test('模型列表只有 Lite 和 Pro，选择按节点保存，点击空白和 
   await page.getByRole('textbox').click({ position: { x: 500, y: 20 } })
   await expect(menu).toHaveCount(0)
   await expect(page.getByRole('dialog')).toBeVisible()
+  // 选择按节点保存；新节点仍是未选择状态。
   await second.click({ position: { x: 70, y: 80 } })
-  await expect(selector(page)).toContainText(lite)
+  await expect(selector(page)).toContainText('选择模型')
   await selector(page).click()
-  // 切换节点时不会把旧节点展开的列表带过去。
   await first.click({ position: { x: 400, y: 70 } })
   await expect(menu).toHaveCount(0)
   await expect(selector(page)).toContainText(pro)
+  // Esc 关闭面板需要焦点在面板内；先回到输入框再按 Esc。
+  await page.getByRole('textbox').click({ position: { x: 500, y: 20 } })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await first.click({ position: { x: 70, y: 80 } })
@@ -57,20 +59,21 @@ test('模型列表只有 Lite 和 Pro，选择按节点保存，点击空白和 
 test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持在窗口内且不缩放画布', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
-  await addImage(page, 340, 620)
-  await page.mouse.click(350, 670)
+  await addNodeViaContextMenu(page, 60, 120, '图片')
+  await page.getByRole('article', { name: '图片节点 1', exact: true }).click({ position: { x: 60, y: 30 } })
   const panel = page.getByRole('dialog')
   await selector(page).focus()
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   const menu = page.getByRole('listbox', { name: '图片模型' })
   await expect(page.getByRole('option', { name: lite, exact: true })).toBeFocused()
   await page.keyboard.press('End')
-  await expect(page.getByRole('option', { name: pro, exact: true })).toBeFocused()
+  await expect(page.getByRole('option', { name: seedreamPro, exact: true })).toBeFocused()
   await page.keyboard.press('Home')
   await expect(page.getByRole('option', { name: lite, exact: true })).toBeFocused()
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('Enter')
-  await expect(selector(page)).toContainText(pro)
+  await expect(selector(page)).toContainText('Niji 7')
   await expect(menu).toHaveCount(0)
   await panel.getByRole('button', { name: '放大输入框', exact: true }).click()
   await selector(page).click()
@@ -93,6 +96,8 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
     return box.y + box.height < (await selector(page).boundingBox())!.y
   }).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('image-model-menu-mobile.png') })
+  await page.keyboard.press('Tab')
+  await expect(menu.getByRole('option', { name: seedreamPro, exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(menu).toHaveCount(0)
   await expect(panel).toBeVisible()

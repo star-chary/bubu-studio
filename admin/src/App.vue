@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { auth, login, logout, restoreSession } from './api'
 import UsersPage from './UsersPage.vue'
 
 const email = ref(''), password = ref(''), visible = ref(false), busy = ref(false), error = ref('')
+// Return only to our own authorization pages after the normal admin login.
+watch(() => auth.status, status => {
+  if (status !== 'ready') return
+  const value = new URLSearchParams(window.location.search).get('mcp_return')
+  if (!value) return
+  try {
+    const target = new URL(value, window.location.origin)
+    if (target.origin === window.location.origin && !target.username && !target.password && !target.hash && ['/oauth/authorize', '/oauth/connections'].includes(target.pathname)) {
+      window.location.replace(target.href)
+    }
+  } catch { /* An invalid return address leaves the user in the admin workspace. */ }
+})
 async function signIn() {
   busy.value = true; error.value = ''
   try { await login(email.value.trim(), password.value); password.value = '' }
@@ -27,6 +39,7 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', pageShow))
       <a class="brand" href="/admin/" aria-label="BuBu-后台管理首页"><span class="brand-mark">B</span><span>BuBu<small>后台管理</small></span></a>
       <div class="nav-caption">管理工作台</div>
       <a href="/admin/" class="nav-item" aria-current="page"><span aria-hidden="true">◎</span>用户管理</a>
+      <a v-if="auth.mcpEnabled" href="/oauth/connections" class="nav-item"><span aria-hidden="true">↗</span>AI 应用授权</a>
       <div class="sidebar-bottom"><span class="status-dot"></span>测试积分阶段<small>BuBu-后台管理</small></div>
     </aside>
     <div class="workspace-body">

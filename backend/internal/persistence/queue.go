@@ -53,7 +53,7 @@ func (s *Store) claimTask(ctx context.Context, lane string) (Task, error) {
 		WHERE claimed_at IS NULL AND (
 			($1='saving' AND status='saving') OR
 			($1='video' AND kind='video' AND status IN ('queued','running')) OR
-			($1='image' AND kind='image' AND status='queued'))
+			($1='image' AND kind='image' AND (status='queued' OR (status='running' AND input->>'provider'='apimart'))))
 		ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END,created_at,id
 		FOR UPDATE SKIP LOCKED LIMIT 1
 	) UPDATE generation_tasks SET claimed_at=now(),updated_at=now(),
@@ -108,9 +108,20 @@ func (s *Store) runSlot(ctx context.Context, lane string, generator Generator, o
 			return err
 		}
 		if task.Kind == "video" {
-			videoGenerator, _ := generator.(VideoGenerator)
+			var videoGenerator VideoGenerator
+			if providers, ok := generator.(interface{ VideoGeneratorFor(string) VideoGenerator }); ok {
+				videoGenerator = providers.VideoGeneratorFor(task.Input.Provider)
+			} else if task.Input.Provider == "" || task.Input.Provider == "ark" {
+				videoGenerator, _ = generator.(VideoGenerator)
+			}
 			videoStorage, _ := objects.(VideoStorage)
 			s.executeVideo(ctx, task, videoGenerator, videoStorage)
+		} else if task.Input.Provider == ProviderAPIMart && task.Status != "saving" {
+			var imageGenerator APIMartImageGenerator
+			if providers, ok := generator.(interface{ APIMartImageGenerator() APIMartImageGenerator }); ok {
+				imageGenerator = providers.APIMartImageGenerator()
+			}
+			s.executeAPIMartImage(ctx, task, imageGenerator, objects)
 		} else {
 			s.execute(ctx, task, generator, objects)
 		}

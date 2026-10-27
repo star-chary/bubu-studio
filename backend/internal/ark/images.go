@@ -20,7 +20,7 @@ type ImageResult struct {
 	Size  string `json:"size,omitempty"`
 }
 
-// APIError 只包含可向前端展示的固定消息，不透传供应商原始响应或凭据。
+// APIError 只包含可公开的消息与经校验的素材序号，不透传供应商原始响应或凭据。
 type APIError struct {
 	Status  int    `json:"-"`
 	Code    string `json:"code"`

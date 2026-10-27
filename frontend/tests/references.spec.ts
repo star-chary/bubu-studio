@@ -86,6 +86,8 @@ test('图片只能参考有效图片，拒绝自身/空节点/损坏素材，多
 })
 
 test('视频可混合引用图片和视频，播放控件不误选，同一素材可供不同节点独立引用', async ({ page }, testInfo) => {
+  // 此用例操作上下两排节点，给节点下方的输入面板留出空间。
+  await page.setViewportSize({ width: 1680, height: 1400 })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
   await upload(page, [imageFile('共用图片.svg'), videoFile])
   await expect(node(page, 'sample-video.mp4').getByRole('button', { name: '播放视频' })).toBeVisible()
@@ -216,6 +218,7 @@ test('放大面板进入参考时收起，窄屏提示不越界，Esc 退出与�
 })
 
 test('被引用素材后续读取失败，清理所有目标中的缩略图、引用端点和连线', async ({ page }) => {
+  await page.setViewportSize({ width: 1680, height: 1400 })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')

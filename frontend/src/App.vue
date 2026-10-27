@@ -12,10 +12,9 @@ const params = new URLSearchParams(location.search)
 const canvasId = params.get('canvas')
 const temporaryId = params.get('temporary')
 const isCanvasRoute = canvasId !== null || temporaryId !== null
-const loginIntent = ref<'login' | 'create' | null>(null)
+const loginRequested = ref(false)
 watch(() => auth.status, (status) => {
-  if (status === 'authenticated' && loginIntent.value === 'login') loginIntent.value = null
-  if (status === 'expired' && !isCanvasRoute) loginIntent.value = null
+  if (status === 'authenticated' || (status === 'expired' && !isCanvasRoute)) loginRequested.value = false
 })
 function restorePage(event: PageTransitionEvent) {
   if (event.persisted) location.reload()
@@ -38,7 +37,7 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', restorePage))
     </div>
     <LoginPage v-if="auth.status === 'expired'" :resume-email="auth.user?.email" />
   </template>
-  <HomePage v-else-if="auth.status === 'authenticated'" :auto-open-create="loginIntent === 'create'" @auto-open-handled="loginIntent = null" />
-  <LoginPage v-else-if="loginIntent !== null" :create-after-login="loginIntent === 'create'" />
-  <GuestHomePage v-else :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginIntent = 'login'" @create="loginIntent = 'create'" @retry="restoreAuth()" />
+  <HomePage v-else-if="auth.status === 'authenticated'" />
+  <LoginPage v-else-if="loginRequested" />
+  <GuestHomePage v-else :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginRequested = true" @create="loginRequested = true" @retry="restoreAuth()" />
 </template>

@@ -1,6 +1,6 @@
 export const VIDEO_MODEL = 'doubao-seedance-2-5-260628'
 export type VideoModelId = typeof VIDEO_MODEL | 'doubao-seedance-2-0-260128' | 'doubao-seedance-2-0-fast-260128' | 'doubao-seedance-2-0-mini-260615'
-export type VideoMode = 'reference' | 'text'
+export type VideoMode = 'reference' | 'text' | 'image'
 export interface VideoOptions {
   resolution: '480p' | '720p'
   ratio: '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9' | 'adaptive'

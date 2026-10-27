@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => ({
     port: 5176, strictPort: true,
     proxy: {
       '/api': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/oauth': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
+      '/mcp': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
+      '/.well-known': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
     },
   },
 }))

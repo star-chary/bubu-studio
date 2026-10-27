@@ -1,5 +1,7 @@
 # Bubu Studio 后端
 
+2026-10-26 扩展 APIMart 视频型号接入：前后端共用 `internal/apimart/video_models.json`，按型号开放文生、普通图片参考、单图起始画面生成。任务固定供应商、功能、原生基础参数和素材角色，复用持久化队列、素材转存和前端回填。该链路不参与平台积分；未接入的专用工作流不进入菜单。无新表或迁移，真实调用与长等待记录见 [视频型号与功能接入](../docs/apimart-video-models.md)。旧目录与 Schema 请求保持移除，`GET /api/model-catalog` 返回404。
+
 2026-10-08 BuBu-后台管理：新增 `/api/admin/*` 的管理员登录、用户分页／搜索、积分发放／流水接口，以及 `cmd/set-admin` 初始化工具。迁移 `007_admin.sql` 在已有用户表添加角色，在积分流水补充来源、操作者和原因；不新增业务表。普通登录和管理登录复用 PostgreSQL Session + HttpOnly Cookie，管理接口实时核验 admin 角色。发放和审计在同一事务，重试使用唯一请求编号；与生成冻结共用账户行锁。Go 全包真实数据库测试、vet、构建和管理端真实浏览器验收通过；已随 `20261008T055817Z` 发布线上，并完成正式 HTTPS 的登录、用户查询、发放防重／审计、画布余额与权限验收，临时数据已清理，见 [管理端说明](../docs/admin.md)。
 
 2026-10-08 注册赠分更新：新邮箱首次创建账号时，在创建用户和首个 Session 的同一 PostgreSQL 事务内写入可用 200 分的积分账户及一条 `grant` 流水；流水幂等键按用户唯一。已有账号登录不重复赠送，功能上线前的旧账号不自动补发。没有公开赠分或充值接口，也没有新增数据库表／迁移。本地隔离 PostgreSQL 的 Go 测试、vet、前端构建与 18/18 项登录／积分浏览器回归通过；真实 Chrome → Vite → Gin → 隔离 schema 验证两个新账号各得 200 分且重登不重复。发布 `20261008T042639Z` 已生成备份并完成正式 HTTPS 验收：注册获得 200 分及一条赠送流水，Chrome 重登不重复，临时验收账号已精确清理。本次未调用真实方舟模型。邮箱未验证，用户选择暂不设置每日新账号总量上限；当前没有平台预算熔断，批量换邮箱或 IP 的赠分风险仍存在。详见 [登录与鉴权](../docs/authentication.md) 和 [测试积分](../docs/test-credits.md)。
@@ -67,10 +69,12 @@ backend/
 ├─ internal/server/router.go 路由注册、请求日志和异常恢复
 ├─ internal/server/images.go JSON / 提示词 / 模型校验、并发限制、结果和错误响应
 ├─ internal/server/assets.go 存储能力、二进制上传、私有预览及 Range
+├─ internal/server/model_catalog.go 只读目录接口（Session 鉴权，无凭据泄露）
+
 ├─ internal/ark/models.go    两个允许调用的模型 ID、默认值与白名单校验
 ├─ internal/ark/images.go    方舟鉴权、请求参数、超时、响应解析与错误映射
 ├─ internal/storage/         OSS SDK、目录分配、文件校验、生成结果转存
-├─ .env.example             无密钥的配置模板
+├─ .env.example             无密钥的配置模板（含 APIMart 视频生成密钥配置）
 ├─ go.mod                   模块名称、Go 版本和依赖版本
 ├─ go.sum                   下载依赖的校验记录
 └─ README.md                启动与验证说明
@@ -85,9 +89,11 @@ backend/
 
 测试积分接口：`GET /api/credits` 返回当前用户的 `{available,reserved}`，`GET /api/credits/ledger` 返回分页流水，`POST /api/credits/quote` 为已保存的图片或视频节点报价。积分发放没有公开 HTTP 接口；新注册账号由 `LoginOrCreate` 在注册事务中获得一次 200 分及唯一流水，旧账号登录不补发。生成提交时后端重新报价；缺积分返回 402 / `CREDITS_INSUFFICIENT`，报价版本或分数变化返回 409 / `CREDIT_QUOTE_CHANGED`，资源不属于当前用户或不存在返回 404 / `NOT_FOUND`。这些拒绝不创建任务、不调用方舟。接口及状态机见 [测试积分](../docs/test-credits.md)。
 
+模型与基础参数由本地配置直接展示，后端已移除旧模型目录接口。节点 `modelSelection` 草稿随画布快照保存，历史型号和高级字段仍能保存。APIMart 支持固定清单内的视频与图片生成，提交须与已保存节点的供应商和型号匹配；未接入型号继续返回 `MODEL_GENERATION_NOT_ENABLED`。APIMart 不进入方舟报价或积分提交链路。见 [固定模型与基础参数](../docs/apimart-model-catalog.md)。
+
 ## 图片生成接口
 
-**当前模式：** 需有效 Session，写请求需 CSRF Token；画布与节点必须归当前用户所有并先通过保存 API 入库。先调用 `POST /api/credits/quote` 获得 `{points,priceVersion}`，再将它们作为 `acceptedPoints`、`priceVersion` 随必填 UUID `taskId` 提交。返回 HTTP 202 与 `id/input/status/createdAt/creditPoints/creditStatus/...` 任务对象，使用 `GET /api/tasks/:id` 或 `GET /api/canvases/:id/tasks` 查询。最终图片位于 `task.result`，失败位于 `task.error`。同 ID 相同输入重交返回原任务，不会重复调用模型或冻结积分。下面的同步 200 响应及 HTTP 模型错误示例是历史记录；当前模型错误写入任务后由查询接口返回，无数据库时业务接口不可用。余额、流水、报价与结算规则见 [测试积分](../docs/test-credits.md)。
+**当前模式：** 需有效 Session，写请求需 CSRF Token；画布与节点必须归当前用户所有并先通过保存 API 入库。方舟请求先调用 `POST /api/credits/quote`，将报价随任务提交；APIMart 图片请求使用 `provider: "apimart"` 和模型基础 `parameters`，暂不请求或扣除平台积分。两者均需 UUID `taskId`，返回任务对象并通过任务接口查询。最终图片位于 `task.result`，失败位于 `task.error`。同 ID 相同输入重交返回原任务。APIMart 接入与当前验收边界见 [APIMart 图片生成](../docs/apimart-image-generation.md)，方舟积分规则见 [测试积分](../docs/test-credits.md)。
 
 `POST /api/images/generations`，`Content-Type: application/json`：
 
@@ -95,7 +101,7 @@ backend/
 {"taskId":"39c6f2cd-9379-4486-ad15-ea1f7fabed85","prompt":"黑洞中冲出一辆复古列车，电影质感","model":"doubao-seedream-5-0-pro-260628","canvasId":"f2476fbb-2af0-494f-9a38-f8f9bdf1e5ac","nodeId":"56b46c49-fc0b-41cf-9db0-01493aa14d3f","acceptedPoints":16,"priceVersion":"test-2026-10-06-v1"}
 ```
 
-接收 `taskId`、`prompt`、可选的 `model`、必填的 `canvasId` 和 `nodeId`，以及可选的 `referenceKeys: string[]`、`promptParts`、`imageOptions: {resolution,ratio}`。参考列表为空时为文生图，有值时为图生图，详见 [图片生成说明](../docs/image-generation.md) 和 [引用生成第二阶段](../docs/reference-generation.md)。归属 ID 必须为 UUID，否则在付费模型调用前拒绝请求。提示词去除两端空白后要求 1～2000 个 Unicode 字符，请求体上限 64 KiB。`model` 省略或留空时默认 Lite；未知模型返回 400 / `INVALID_MODEL`。后端按模型校验分辨率和比例，拒绝其他字段，不能从浏览器传入密钥、任意像素尺寸、任意图片 URL 或 Base64；参考只能提交已保存且归属正确的资源。
+方舟请求接收 `taskId`、`prompt`、可选的 `model`、必填的 `canvasId` 和 `nodeId`，以及可选的 `referenceKeys: string[]`、`promptParts`、`imageOptions: {resolution,ratio}`。参考列表为空时为文生图，有值时为图生图，详见 [图片生成说明](../docs/image-generation.md) 和 [引用生成第二阶段](../docs/reference-generation.md)。归属 ID 必须为 UUID，否则在付费模型调用前拒绝请求。提示词去除两端空白后要求 1～2000 个 Unicode 字符，请求体上限 64 KiB。方舟 `model` 省略或留空时默认 Lite；未知模型返回 400 / `INVALID_MODEL`。后端按模型校验分辨率和比例，不能从浏览器传入密钥、任意像素尺寸、任意图片 URL 或 Base64；参考只能提交已保存且归属正确的资源。
 
 | 展示名称 | model 值 |
 | --- | --- |
@@ -133,6 +139,8 @@ Lite 沿用前一阶段真实验证过的 ID；Pro ID 核对自[火山方舟模�
 开启 OSS 后文件保存在云端，预览在校验登录与资源所有权后由后端读取私有对象并转发，视频支持 Range。导入文件通过单独上传接口保存；临时文件在后端 `.storage-tmp/`，处理后清理，未实现直传或分片。参考准备最长 30 秒，模型最长 180 秒，转存最多 90 秒；前端每 2 秒查询任务。账号、Session、画布快照、资源登记和生成历史在 PostgreSQL 中保存。没有 Redis 或团队协作；服务仅监听本机。健康检查仅检查 HTTP 服务，不代表模型或 OSS 连通。
 
 ## 检查与构建
+
+远程用户查询 MCP 已提供 `list_users`、OAuth 授权码 + S256 PKCE、授权撤销和独立的 Bearer 鉴权。入口随 `MCP_PUBLIC_URL` 配置启用；查询复用现有管理员权限与 PostgreSQL 用户查询，008 迁移仅增加授权记录。配置、契约、兼容范围及验收方法见 [用户查询 MCP](../docs/mcp.md)。
 
 2026-09-24：设置 `TEST_DATABASE_URL` 后的完整 Go 测试、vet、构建通过，集成用例会创建并清理独立测试 schema；不设置时数据库集成测试明确跳过。前端 40 项回归与真实数据库浏览器保存 / 刷新 / 失败任务追踪通过，模型与对象存储成功分支用模拟实现配合真实 PostgreSQL 验证。详细证据见 [持久化说明](../docs/persistence.md)。
 

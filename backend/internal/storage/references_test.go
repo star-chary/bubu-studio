@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 type referenceObjects struct {
@@ -108,5 +109,15 @@ func TestOSSSignedReferenceExpiresAfterTenMinutes(t *testing.T) {
 	parsed, err := url.Parse(address)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "test-bucket.oss-cn-hangzhou.aliyuncs.com" || parsed.Query().Get("x-oss-expires") != "600" || parsed.Query().Get("x-oss-signature") == "" {
 		t.Fatal("signed reference URL must expire in 10 minutes")
+	}
+}
+
+func TestAPIMartImageReferencesHaveTimeForAsyncQueue(t *testing.T) {
+	store, objects, target, key := referenceFixture(t)
+	timed := &timedMemoryObjects{memoryObjects: &objects.memoryObjects}
+	store.objects = timed
+	urls, err := store.APIMartImageReferenceURLs(context.Background(), target, []string{key})
+	if err != nil || len(urls) != 1 || len(timed.ttls) != 1 || timed.ttls[0] != 2*time.Hour {
+		t.Fatalf("unexpected asynchronous reference: %v %v %v", urls, err, timed.ttls)
 	}
 }

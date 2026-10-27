@@ -31,6 +31,8 @@ func persistenceFailure(c *gin.Context, err error) {
 		status, code, message = 402, "CREDITS_INSUFFICIENT", "测试积分不足，当前无法提交生成任务。"
 	case errors.Is(err, persistence.ErrCreditQuoteChanged):
 		status, code, message = 409, "CREDIT_QUOTE_CHANGED", "本次生成积分已变化，请确认新报价后重试。"
+	case errors.Is(err, persistence.ErrModelGenerationNotEnabled):
+		status, code, message = 400, "MODEL_GENERATION_NOT_ENABLED", "该模型生成暂未接入，当前仅支持选择模型与编辑参数，画布会自动保存草稿。"
 	}
 	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

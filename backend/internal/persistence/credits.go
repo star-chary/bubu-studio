@@ -137,6 +137,11 @@ func (s *Store) prepareCreditTask(ctx context.Context, userID, kind string, inpu
 	if err != nil {
 		return nil, "", err
 	}
+	// 报价与任务创建共享的公共业务入口：目录草稿节点不得进入 Ark 生成链路，
+	// 拒绝发生在绑定参考素材、编译提示词与冻结积分之前。
+	if node.Data.ModelSelection != nil && node.Data.ModelSelection.Provider == ProviderAPIMart {
+		return nil, "", ErrModelGenerationNotEnabled
+	}
 	if node.Data.Kind != kind || node.Data.Origin == "upload" {
 		return nil, "", ErrInvalid
 	}
@@ -152,6 +157,13 @@ func (s *Store) prepareCreditTask(ctx context.Context, userID, kind string, inpu
 }
 
 func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Input) (CreditQuote, error) {
+	if kind != "image" && kind != "video" {
+		return CreditQuote{}, ErrInvalid
+	}
+	// 报价入口同样确认节点供应商，避免 APIMart 节点触发旧报价与价格换算。
+	if err := s.RequireGenerationEnabled(ctx, input.CanvasID, input.NodeID); err != nil {
+		return CreditQuote{}, err
+	}
 	if kind == "image" {
 		model, err := ark.ResolveImageModel(input.Model)
 		if err != nil || len(input.ReferenceKeys) > ark.MaxReferenceImages(model) {
@@ -356,7 +368,7 @@ func creditCompletion(kind, oldStatus, status string, result *Result, failure *a
 	}
 	if status == "failed" && failure != nil {
 		if kind == "video" {
-			if strings.HasPrefix(failure.Code, "PROVIDER_") || failure.Code == "VIDEO_REJECTED" || failure.Code == "MODEL_AUTH_FAILED" || failure.Code == "MODEL_LIMITED" {
+			if strings.HasPrefix(failure.Code, "PROVIDER_") || failure.Code == "VIDEO_REJECTED" || strings.HasPrefix(failure.Code, "VIDEO_REJECTED_") || failure.Code == "MODEL_AUTH_FAILED" || failure.Code == "MODEL_LIMITED" {
 				return "release"
 			}
 		} else {

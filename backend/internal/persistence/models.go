@@ -13,12 +13,17 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrConflict         = errors.New("version or request conflict")
-	ErrBusy             = errors.New("generation busy")
-	ErrInvalid          = errors.New("invalid canvas or node")
-	ErrPromptReferences = errors.New("invalid prompt reference binding")
+	ErrNotFound                  = errors.New("not found")
+	ErrConflict                  = errors.New("version or request conflict")
+	ErrBusy                      = errors.New("generation busy")
+	ErrInvalid                   = errors.New("invalid canvas or node")
+	ErrPromptReferences          = errors.New("invalid prompt reference binding")
+	ErrModelGenerationNotEnabled = errors.New("model generation not enabled")
 )
+
+// ProviderAPIMart 是节点模型草稿与目录共用的供应商标识。
+// 没有 modelSelection 字段的历史节点按旧 Ark 格式读取，不迁移为 APIMart 任务。
+const ProviderAPIMart = "apimart"
 
 type Position struct {
 	X float64 `json:"x"`
@@ -39,18 +44,31 @@ type ImageNodeOptions struct {
 	ark.ImageOptions
 	Count int `json:"count"`
 }
+
+// ModelSelection 保存目录模型的选择草稿：模型身份由“提供商＋模型 ID”确定，
+// 参数只保存用户实际选择的值；提示词与参考素材继续使用现有字段。
+// 草稿允许尚未填写完整，也不因目录暂不可用、模型下架或参数规则更新而拒绝保存。
+type ModelSelection struct {
+	Provider       string         `json:"provider"`
+	ModelID        string         `json:"modelId"`
+	CatalogVersion string         `json:"catalogVersion,omitempty"`
+	SchemaVersion  string         `json:"schemaVersion,omitempty"`
+	Parameters     map[string]any `json:"parameters,omitempty"`
+}
 type NodeData struct {
-	ImageOptions *ImageNodeOptions `json:"imageOptions,omitempty"`
-	VideoOptions *VideoOptions     `json:"videoOptions,omitempty"`
-	VideoModel   string            `json:"videoModel,omitempty"`
-	VideoMode    string            `json:"videoMode,omitempty"`
-	Kind         string            `json:"kind"`
-	Name         string            `json:"name"`
-	Prompt       string            `json:"prompt,omitempty"`
-	PromptParts  []PromptPart      `json:"promptParts,omitempty"`
-	ImageModel   string            `json:"imageModel,omitempty"`
-	Origin       string            `json:"origin,omitempty"`
-	ReferenceIDs []string          `json:"referenceIds,omitempty"`
+	ImageOptions   *ImageNodeOptions `json:"imageOptions,omitempty"`
+	VideoOptions   *VideoOptions     `json:"videoOptions,omitempty"`
+	VideoModel     string            `json:"videoModel,omitempty"`
+	VideoMode      string            `json:"videoMode,omitempty"`
+	FirstFrameID   string            `json:"firstFrameId,omitempty"`
+	Kind           string            `json:"kind"`
+	Name           string            `json:"name"`
+	Prompt         string            `json:"prompt,omitempty"`
+	PromptParts    []PromptPart      `json:"promptParts,omitempty"`
+	ImageModel     string            `json:"imageModel,omitempty"`
+	ModelSelection *ModelSelection   `json:"modelSelection,omitempty"`
+	Origin         string            `json:"origin,omitempty"`
+	ReferenceIDs   []string          `json:"referenceIds,omitempty"`
 }
 type Node struct {
 	ID       string   `json:"id"`
@@ -83,6 +101,8 @@ type CanvasSummary struct {
 	Preview   []CanvasPreviewNode `json:"preview"`
 }
 type Input struct {
+	Provider      string            `json:"provider,omitempty"`
+	Parameters    map[string]any    `json:"parameters,omitempty"`
 	ImageOptions  *ark.ImageOptions `json:"imageOptions,omitempty"`
 	PromptParts   []PromptPart      `json:"promptParts,omitempty"`
 	References    []Reference       `json:"references,omitempty"`
@@ -135,6 +155,54 @@ type Task struct {
 func ValidID(id string) bool {
 	return storage.ValidateScope(storage.Scope{CanvasID: id, NodeID: id}) == nil
 }
+func jsonDepth(value any, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	switch v := value.(type) {
+	case map[string]any:
+		for _, child := range v {
+			if !jsonDepth(child, depth+1) {
+				return false
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if !jsonDepth(child, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// validateModelSelection 只做草稿结构校验：长度、大小与嵌套深度。
+// 不引用任何 Ark 模型白名单或目录规则，目录不可用不影响历史画布保存。
+func validateModelSelection(sel *ModelSelection) error {
+	if sel.Provider != ProviderAPIMart {
+		return ErrInvalid
+	}
+	if utf8.RuneCountInString(sel.ModelID) > 200 || utf8.RuneCountInString(sel.CatalogVersion) > 64 || utf8.RuneCountInString(sel.SchemaVersion) > 64 {
+		return ErrInvalid
+	}
+	if len(sel.Parameters) > 50 {
+		return ErrInvalid
+	}
+	for key, value := range sel.Parameters {
+		if utf8.RuneCountInString(key) > 64 || !jsonDepth(value, 0) {
+			return ErrInvalid
+		}
+		if text, ok := value.(string); ok && utf8.RuneCountInString(text) > 2000 {
+			return ErrInvalid
+		}
+	}
+	payload, err := json.Marshal(sel.Parameters)
+	if err != nil || len(payload) > 64<<10 {
+		return ErrInvalid
+	}
+	return nil
+}
+
 func (s Snapshot) Validate() error {
 	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && math.Abs(v) <= 1e7 }
 	if s.Nodes == nil || len(s.Nodes) > 300 || !finite(s.Viewport.X) || !finite(s.Viewport.Y) || s.Viewport.Zoom < .25 || s.Viewport.Zoom > 2 {
@@ -148,21 +216,35 @@ func (s Snapshot) Validate() error {
 		if _, ok := nodes[n.ID]; ok {
 			return ErrInvalid
 		}
-		if options := n.Data.ImageOptions; options != nil {
-			if n.Data.Kind != "image" || (options.Count != 1 && options.Count != 2 && options.Count != 4) {
-				return ErrInvalid
-			}
-			if _, err := ark.ResolveImageOptions(n.Data.ImageModel, &options.ImageOptions); err != nil {
+		// 目录草稿节点只做结构校验，不套用 Ark 的模型白名单、分辨率与时长规则。
+		apimart := n.Data.ModelSelection != nil
+		if apimart {
+			if err := validateModelSelection(n.Data.ModelSelection); err != nil {
 				return ErrInvalid
 			}
 		}
-		if n.Data.Kind == "video" {
-			in := Input{CanvasID: n.ID, NodeID: n.ID, Model: n.Data.VideoModel, Mode: n.Data.VideoMode, Duration: 4}
-			if v := n.Data.VideoOptions; v != nil {
-				in.Resolution, in.Ratio, in.Duration = v.Resolution, v.Ratio, v.Duration
-			}
-			if normalizeVideoOptions(&in) != nil {
+		if options := n.Data.ImageOptions; options != nil {
+			if n.Data.Kind != "image" {
 				return ErrInvalid
+			}
+			if !apimart {
+				if options.Count != 1 && options.Count != 2 && options.Count != 4 {
+					return ErrInvalid
+				}
+				if _, err := ark.ResolveImageOptions(n.Data.ImageModel, &options.ImageOptions); err != nil {
+					return ErrInvalid
+				}
+			}
+		}
+		if n.Data.Kind == "video" {
+			if !apimart {
+				in := Input{CanvasID: n.ID, NodeID: n.ID, Model: n.Data.VideoModel, Mode: n.Data.VideoMode, Duration: 4}
+				if v := n.Data.VideoOptions; v != nil {
+					in.Resolution, in.Ratio, in.Duration = v.Resolution, v.Ratio, v.Duration
+				}
+				if normalizeVideoOptions(&in) != nil {
+					return ErrInvalid
+				}
 			}
 		} else if n.Data.VideoOptions != nil || n.Data.VideoModel != "" || n.Data.VideoMode != "" {
 			return ErrInvalid
@@ -176,8 +258,10 @@ func (s Snapshot) Validate() error {
 		if n.Data.Kind == "audio" && (n.Data.Origin != "upload" || len(n.Data.ReferenceIDs) != 0 || n.Data.Prompt != "" || n.Data.ImageModel != "") {
 			return ErrInvalid
 		}
-		if _, err := ark.ResolveImageModel(n.Data.ImageModel); err != nil {
-			return ErrInvalid
+		if !apimart {
+			if _, err := ark.ResolveImageModel(n.Data.ImageModel); err != nil {
+				return ErrInvalid
+			}
 		}
 		nodes[n.ID] = n
 	}
@@ -189,6 +273,12 @@ func (s Snapshot) Validate() error {
 				return ErrInvalid
 			}
 			seen[id] = true
+		}
+		if n.Data.FirstFrameID != "" {
+			source, ok := nodes[n.Data.FirstFrameID]
+			if n.Data.Kind != "video" || !ok || !seen[n.Data.FirstFrameID] || source.Data.Kind != "image" {
+				return ErrInvalid
+			}
 		}
 	}
 	return nil

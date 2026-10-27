@@ -1,6 +1,7 @@
 import type { ImageModelId, ImageOptions } from '../models/imageModels'
 import type { StoredAsset } from '../api/assets'
 import type { VideoMode, VideoModelId, VideoOptions } from '../models/videoModels'
+import type { ModelSelection } from '../models/modelCatalog'
 import type { PromptPart } from './prompt'
 
 export type MediaKind = 'image' | 'video' | 'audio'
@@ -24,8 +25,11 @@ export interface MediaNodeData {
   videoOptions?: VideoOptions
   videoModel?: VideoModelId
   videoMode?: VideoMode
+  firstFrameId?: string
   imageModel?: ImageModelId
   imageOptions?: ImageOptions
+  // 目录模型选择草稿：存在时节点以它为依据，旧 Ark 字段只保留历史值。
+  modelSelection?: ModelSelection
   origin?: 'upload' | 'generated'
   asset?: StoredAsset
   storage?: { status: 'saving' | 'saved' | 'error'; error?: string }
@@ -53,6 +57,16 @@ export interface MediaReference {
   url: string
   label: string
   error?: string
+}
+
+// 节点当前供应商：目录草稿（apimart）、历史 Ark 字段（ark）或尚未选择（none）。
+export type NodeProvider = 'apimart' | 'ark' | 'none'
+export function nodeProvider(data: Pick<MediaNodeData, 'modelSelection' | 'imageModel' | 'videoModel'>): NodeProvider {
+  if (data.modelSelection) return data.modelSelection.modelId ? 'apimart' : 'none'
+  return 'ark'
+}
+export function isApimartNode(data: Pick<MediaNodeData, 'modelSelection'>): boolean {
+  return !!data.modelSelection?.modelId
 }
 
 export interface MediaDimensions {

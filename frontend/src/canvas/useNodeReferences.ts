@@ -1,8 +1,11 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { MarkerType, useVueFlow, type Edge, type GraphNode } from '@vue-flow/core'
-import { mediaKindLabel, type MediaKind, type MediaNodeData, type MediaReference } from './media'
-import { videoReferenceError } from './videoReferences'
+import { mediaKindLabel, isApimartNode, type MediaKind, type MediaNodeData, type MediaReference } from './media'
+import { apimartReferencesError, videoReferenceError } from './videoReferences'
 import { VIDEO_MODEL, videoModelDefinition } from '../models/videoModels'
+import { referenceCapability } from '../models/modelCatalog'
+import { catalogModelFor } from '../models/staticModelCatalog'
+import { apimartVideoEnabled } from '../models/apimartVideo'
 import type { MentionCandidate } from './prompt'
 
 type MediaGraphNode = GraphNode<MediaNodeData>
@@ -14,7 +17,8 @@ function unavailableReason(target: MediaGraphNode, source?: MediaGraphNode, keep
   if (target.id === source.id) return '不能参考节点自身'
   if (target.data.kind === 'audio') return '音频只作为上传素材，不能引用其他节点'
   if (target.data.kind === 'image' && source.data.kind !== 'image') return '图片节点只能参考图片'
-  if (target.data.kind === 'video' && !keepExisting) {
+  // 已接入的文生模式保留原素材草稿，但不允许继续添加参考。
+  if (target.data.kind === 'video' && !keepExisting && (!target.data.modelSelection || apimartVideoEnabled(target.data.modelSelection))) {
     if (target.data.videoMode === 'text') return '文生视频不使用参考素材，请先切换到全能参考'
   }
   const available = source.data.status === 'ready' || (keepExisting && source.data.status === 'loading')
@@ -26,9 +30,29 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
   const { nodes, findNode, updateNodeData } = useVueFlow(flowId)
 
   function capacityReason(target: MediaGraphNode, source: MediaGraphNode): string {
-    if (target.data.kind !== 'video' || target.data.referenceIds?.includes(source.id)) return ''
-    const model = videoModelDefinition(target.data.videoModel ?? VIDEO_MODEL)
+    if (target.data.referenceIds?.includes(source.id)) return ''
     const count = (target.data.referenceIds ?? []).filter((id) => findNode(id)?.data.kind === source.data.kind).length
+    if (target.data.kind === 'image') {
+      if (isApimartNode(target.data)) {
+        const capability = referenceCapability(catalogModelFor(target.data.modelSelection?.modelId ?? '', 'image'), 'image')
+        if (capability?.max != null && count >= capability.max) return `所选模型最多参考 ${capability.max} 项图片，请移除多余参考或切换模型`
+        return ''
+      }
+      return ''
+    }
+    if (target.data.kind !== 'video') return ''
+    if (target.data.videoMode === 'image') return source.data.kind === 'image' ? '' : '图生视频只能选择图片作为起始画面'
+    if (isApimartNode(target.data)) {
+      const capability = referenceCapability(catalogModelFor(target.data.modelSelection?.modelId ?? '', 'video'), source.data.kind)
+      if (capability?.max === 0) return `当前模型暂不支持${mediaKindLabel[source.data.kind]}参考，请选择图片`
+      if (capability?.max != null && count >= capability.max) {
+        const name = catalogModelFor(target.data.modelSelection?.modelId ?? '', 'video')?.name || '所选模型'
+        return `${name} 最多参考 ${capability.max} 项${mediaKindLabel[source.data.kind]}，请移除多余参考或切换模型`
+      }
+      return ''
+    }
+    if (target.data.modelSelection) return '' // 未选择模型：不套用任何 Ark 限制
+    const model = videoModelDefinition(target.data.videoModel ?? VIDEO_MODEL)
     const limit = model.maxReferences[source.data.kind]
     return count >= limit ? `${model.name} 最多参考 ${limit} 项${mediaKindLabel[source.data.kind]}，请移除多余参考或切换模型` : ''
   }
@@ -49,9 +73,17 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
       if (!source.data.asset && unavailableReason(target, source, true)) return []
       const kind = source.data.kind
       const index = ++counts[kind]
+      let error: string | undefined
+      if (target.data.kind === 'video') {
+        // 目录节点不套用 Ark 参考检查；历史 Ark 节点维持原有检查。
+        if (isApimartNode(target.data)) {
+          error = target.data.videoMode === 'text' ? '' : apimartReferencesError([{ id, data: source.data }], canvasId.value, catalogModelFor(target.data.modelSelection?.modelId ?? '', 'video'), target.data.videoMode)
+        } else if (!target.data.modelSelection) {
+          error = videoReferenceError(source.data, canvasId.value, id)
+        }
+      }
       return [{ id, name: source.data.name, kind, url: source.data.url ?? '',
-        label: target.data.kind === 'video' ? `${mediaKindLabel[kind]}${index}` : String(index),
-        error: target.data.kind === 'video' ? videoReferenceError(source.data, canvasId.value, id) : undefined }]
+        label: target.data.kind === 'video' ? `${mediaKindLabel[kind]}${index}` : String(index), error }]
     })
   }
 
@@ -95,6 +127,11 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
       return
     }
     const ids = target.data.referenceIds ?? []
+    if (target.data.kind === 'video' && target.data.videoMode === 'image' && source?.data.kind === 'image') {
+      updateNodeData(target.id, { referenceIds: ids.includes(sourceId) ? ids : [...ids, sourceId], firstFrameId: sourceId })
+      feedback.value = `已选择 ${source.data.name} 作为起始图片`
+      return
+    }
     if (ids.includes(sourceId)) {
       feedback.value = '此素材已添加，可继续选择其他素材'
       return
@@ -106,7 +143,7 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
   function removeReference(targetId: string, sourceId: string) {
     const target: MediaGraphNode | undefined = findNode(targetId)
     if (!target) return
-    updateNodeData(targetId, { referenceIds: (target.data.referenceIds ?? []).filter((id) => id !== sourceId) })
+    updateNodeData(targetId, { referenceIds: (target.data.referenceIds ?? []).filter((id) => id !== sourceId), ...(target.data.firstFrameId === sourceId ? { firstFrameId: undefined } : {}) })
     feedback.value = ''
   }
 
@@ -135,7 +172,8 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     if (!candidate || candidate.error) return candidate?.error || '素材已不存在'
     const target = findNode(targetId)!
     const ids: string[] = target.data.referenceIds ?? []
-    if (!ids.includes(sourceId)) updateNodeData(targetId, { referenceIds: [...ids, sourceId] })
+    if (target.data.videoMode === 'image') updateNodeData(targetId, { referenceIds: ids.includes(sourceId) ? ids : [...ids, sourceId], firstFrameId: sourceId })
+    else if (!ids.includes(sourceId)) updateNodeData(targetId, { referenceIds: [...ids, sourceId] })
     return ''
   }
 
@@ -159,7 +197,7 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
         if (source?.data.asset && id !== target.id && target.data.kind !== 'audio' && (target.data.kind !== 'image' || source.data.kind === 'image')) return true
         return !unavailableReason(target, source, true)
       })
-      if (validIds.length !== ids.length) updateNodeData(target.id, { referenceIds: validIds })
+      if (validIds.length !== ids.length) updateNodeData(target.id, { referenceIds: validIds, ...(target.data.firstFrameId && !validIds.includes(target.data.firstFrameId) ? { firstFrameId: undefined } : {}) })
     }
     if (referenceTargetId.value && !targetNode.value) finishSelection()
   })

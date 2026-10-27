@@ -40,6 +40,8 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 		decoder := json.NewDecoder(c.Request.Body)
 		decoder.DisallowUnknownFields()
 		var input struct {
+			Provider       string                   `json:"provider"`
+			Parameters     map[string]any           `json:"parameters"`
 			AcceptedPoints int64                    `json:"acceptedPoints"`
 			PriceVersion   string                   `json:"priceVersion"`
 			PromptParts    []persistence.PromptPart `json:"promptParts"`
@@ -62,6 +64,106 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 		prompt := strings.TrimSpace(input.Prompt)
 		if prompt == "" || utf8.RuneCountInString(prompt) > 2000 {
 			fail(400, "INVALID_PROMPT", "请输入 1～2000 字的提示词。")
+			return
+		}
+		if db != nil {
+			if !persistence.ValidID(input.TaskID) {
+				fail(400, "INVALID_TASK_ID", "请提供唯一的任务 UUID。")
+				return
+			}
+			if !authorizeCanvas(c, db, input.CanvasID) {
+				return
+			}
+			if input.Provider == persistence.ProviderAPIMart {
+				request := persistence.Input{Provider: input.Provider, Parameters: input.Parameters, Prompt: input.Prompt, PromptParts: input.PromptParts, Model: input.Model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}
+				existing, lookup := db.Task(c.Request.Context(), input.TaskID)
+				if lookup == nil {
+					if !authorizeTask(c, db, existing.ID) {
+						return
+					}
+				} else if !errors.Is(lookup, persistence.ErrNotFound) {
+					persistenceFailure(c, lookup)
+					return
+				} else {
+					if err := db.RequireGenerationEnabled(c.Request.Context(), input.CanvasID, input.NodeID); err != nil {
+						persistenceFailure(c, err)
+						return
+					}
+					if store == nil {
+						fail(503, "IMAGE_STORAGE_REQUIRED", "图片生成需要启用素材保存服务。")
+						return
+					}
+				}
+				task, err := db.CreateAPIMartImageTask(c.Request.Context(), c.GetString("userID"), input.TaskID, request)
+				if err != nil {
+					videoHTTPFailure(c, err)
+					return
+				}
+				c.JSON(taskHTTPStatus(task), task)
+				return
+			}
+			if input.Provider != "" || input.Parameters != nil {
+				fail(400, "INVALID_MODEL", "图片供应商或参数无效。")
+				return
+			}
+			// 已有任务的幂等返回保持原语义，不因节点供应商变化而改判。
+			if existing, e := db.Task(c.Request.Context(), input.TaskID); e == nil {
+				if !authorizeTask(c, db, existing.ID) {
+					return
+				}
+				task, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), input.TaskID, "image", persistence.Input{Prompt: func() string {
+					if len(input.PromptParts) > 0 {
+						return input.Prompt
+					}
+					return prompt
+				}(), PromptParts: input.PromptParts, Model: input.Model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}, input.AcceptedPoints, input.PriceVersion)
+				if err != nil {
+					persistenceFailure(c, err)
+					return
+				}
+				c.JSON(http.StatusAccepted, task)
+				return
+			} else if !errors.Is(e, persistence.ErrNotFound) {
+				persistenceFailure(c, e)
+				return
+			}
+			// 目录草稿节点：拒绝发生在 Ark 模型解析、报价与任务创建之前，
+			// 依据是已保存节点的供应商选择，不信任客户端提交的标记。
+			if err := db.RequireGenerationEnabled(c.Request.Context(), input.CanvasID, input.NodeID); err != nil {
+				persistenceFailure(c, err)
+				return
+			}
+			model, err := ark.ResolveImageModel(input.Model)
+			if err != nil {
+				fail(400, "INVALID_MODEL", err.Error())
+				return
+			}
+			if _, err := ark.ResolveImageOptions(model, input.ImageOptions); err != nil {
+				var failure *ark.APIError
+				if errors.As(err, &failure) {
+					fail(failure.Status, failure.Code, failure.Message)
+				}
+				return
+			}
+			if len(input.ReferenceKeys) > ark.MaxReferenceImages(model) {
+				fail(400, "TOO_MANY_REFERENCES", fmt.Sprintf("所选模型最多支持 %d 张参考图片。", ark.MaxReferenceImages(model)))
+				return
+			}
+			task, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), input.TaskID, "image", persistence.Input{Prompt: func() string {
+				if len(input.PromptParts) > 0 {
+					return input.Prompt
+				}
+				return prompt
+			}(), PromptParts: input.PromptParts, Model: model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}, input.AcceptedPoints, input.PriceVersion)
+			if err != nil {
+				persistenceFailure(c, err)
+				return
+			}
+			c.JSON(http.StatusAccepted, task)
+			return
+		}
+		if input.Provider != "" || input.Parameters != nil {
+			fail(400, "INVALID_MODEL", "图片供应商或参数无效。")
 			return
 		}
 		model, err := ark.ResolveImageModel(input.Model)
@@ -90,35 +192,6 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 				fail(400, "INVALID_ASSET_SCOPE", err.Error())
 				return
 			}
-		}
-		if db != nil {
-			if !persistence.ValidID(input.TaskID) {
-				fail(400, "INVALID_TASK_ID", "请提供唯一的任务 UUID。")
-				return
-			}
-			if !authorizeCanvas(c, db, input.CanvasID) {
-				return
-			}
-			if existing, e := db.Task(c.Request.Context(), input.TaskID); e == nil {
-				if !authorizeTask(c, db, existing.ID) {
-					return
-				}
-			} else if !errors.Is(e, persistence.ErrNotFound) {
-				persistenceFailure(c, e)
-				return
-			}
-			task, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), input.TaskID, "image", persistence.Input{Prompt: func() string {
-				if len(input.PromptParts) > 0 {
-					return input.Prompt
-				}
-				return prompt
-			}(), PromptParts: input.PromptParts, Model: model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}, input.AcceptedPoints, input.PriceVersion)
-			if err != nil {
-				persistenceFailure(c, err)
-				return
-			}
-			c.JSON(http.StatusAccepted, task)
-			return
 		}
 		if len(input.PromptParts) > 0 {
 			fail(503, "DATABASE_REQUIRED", "素材标签生成需要启用画布保存服务。")

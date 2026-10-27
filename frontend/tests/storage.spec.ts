@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { test, expect } from './setup'
+import { test, expect, selectArkModel } from './setup'
 
 const imagePath = fileURLToPath(new URL('./fixtures/sample-image.png', import.meta.url))
 const videoPath = fileURLToPath(new URL('./fixtures/sample-video.mp4', import.meta.url))
@@ -23,6 +23,8 @@ async function prepareImageNode(page: Page) {
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
   const node = page.getByRole('article', { name: '图片节点 1', exact: true })
   await node.click({ position: { x: 60, y: 70 } })
+  // 新节点默认未选择模型；Ark 生成回归先显式选择 Lite。
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   await page.getByRole('textbox').fill('湖面上的木屋')
   return node
 }

@@ -14,6 +14,8 @@ import (
 )
 
 type videoBody struct {
+	Provider       string                   `json:"provider"`
+	Parameters     map[string]any           `json:"parameters"`
 	AcceptedPoints int64                    `json:"acceptedPoints"`
 	PriceVersion   string                   `json:"priceVersion"`
 	TaskID         string                   `json:"taskId"`
@@ -85,11 +87,7 @@ func videoHandler(store AssetStore, db *persistence.Store) gin.HandlerFunc {
 			fail("INVALID_TASK_ID", "请提供任务 UUID。")
 			return
 		}
-		input := persistence.Input{Prompt: in.Prompt, PromptParts: in.PromptParts, CanvasID: in.CanvasID, NodeID: in.NodeID, Model: in.Model, Mode: in.Mode, References: in.References, Resolution: in.Resolution, Ratio: in.Ratio, Duration: in.Duration, GenerateAudio: &in.GenerateAudio}
-		if persistence.NormalizeVideoInput(&input) != nil {
-			fail("INVALID_VIDEO_INPUT", "视频参数无效，请检查模型、时长、画质、比例和提示词。")
-			return
-		}
+		input := persistence.Input{Provider: in.Provider, Parameters: in.Parameters, Prompt: in.Prompt, PromptParts: in.PromptParts, CanvasID: in.CanvasID, NodeID: in.NodeID, Model: in.Model, Mode: in.Mode, References: in.References, Resolution: in.Resolution, Ratio: in.Ratio, Duration: in.Duration, GenerateAudio: &in.GenerateAudio}
 		if db == nil {
 			c.JSON(503, gin.H{"error": gin.H{"code": "DATABASE_NOT_CONFIGURED", "message": "视频生成需要 PostgreSQL。"}})
 			return
@@ -97,13 +95,19 @@ func videoHandler(store AssetStore, db *persistence.Store) gin.HandlerFunc {
 		if !authorizeCanvas(c, db, input.CanvasID) {
 			return
 		}
+		create := func() (persistence.Task, error) {
+			if input.Provider == persistence.ProviderAPIMart {
+				return db.CreateAPIMartVideoTask(c.Request.Context(), c.GetString("userID"), in.TaskID, input)
+			}
+			return db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), in.TaskID, "video", input, in.AcceptedPoints, in.PriceVersion)
+		}
 		// Resolve an existing idempotency key before checking mutable service state.
 		existing, lookup := db.Task(c.Request.Context(), in.TaskID)
 		if lookup == nil {
 			if !authorizeTask(c, db, existing.ID) {
 				return
 			}
-			t, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), in.TaskID, "video", input, in.AcceptedPoints, in.PriceVersion)
+			t, err := create()
 			if err != nil {
 				videoHTTPFailure(c, err)
 				return
@@ -115,11 +119,20 @@ func videoHandler(store AssetStore, db *persistence.Store) gin.HandlerFunc {
 			videoHTTPFailure(c, lookup)
 			return
 		}
+		// 未接入型号在参数归一化、报价与任务创建之前拒绝。
+		if err := db.RequireGenerationEnabled(c.Request.Context(), input.CanvasID, input.NodeID); err != nil {
+			videoHTTPFailure(c, err)
+			return
+		}
+		if persistence.NormalizeVideoInput(&input) != nil {
+			fail("INVALID_VIDEO_INPUT", "视频参数无效，请检查模型、时长、画质、比例和提示词。")
+			return
+		}
 		if _, ok := store.(persistence.VideoStorage); !ok {
 			c.JSON(503, gin.H{"error": gin.H{"code": "VIDEO_STORAGE_REQUIRED", "message": "视频生成需要启用素材保存服务。"}})
 			return
 		}
-		t, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), in.TaskID, "video", input, in.AcceptedPoints, in.PriceVersion)
+		t, err := create()
 		if err != nil {
 			videoHTTPFailure(c, err)
 			return

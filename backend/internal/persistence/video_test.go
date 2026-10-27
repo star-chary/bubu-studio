@@ -14,7 +14,7 @@ import (
 )
 
 func TestCompilePromptOrderedIdentity(t *testing.T) {
-	refs := []Reference{{promptSourceID, "image-b", "image"}, {"40404040-4040-4040-8040-404040404040", "video", "video"}, {"50505050-5050-4050-8050-505050505050", "image-a", "image"}}
+	refs := []Reference{{NodeID: promptSourceID, AssetKey: "image-b", Kind: "image"}, {NodeID: "40404040-4040-4040-8040-404040404040", AssetKey: "video", Kind: "video"}, {NodeID: "50505050-5050-4050-8050-505050505050", AssetKey: "image-a", Kind: "image"}}
 	parts := []PromptPart{{Type: "reference", NodeID: refs[2].NodeID, Kind: "image", Name: "重名"}, {Type: "text", Text: " @literal "}, {Type: "reference", NodeID: refs[1].NodeID, Kind: "video", Name: "镜头"}, {Type: "reference", NodeID: refs[2].NodeID, Kind: "image", Name: "重名"}}
 	in := Input{NodeID: nodeID, Prompt: "@重名 @literal @镜头@重名", PromptParts: parts}
 	got, err := CompilePrompt(in, "video", refs)
@@ -82,7 +82,7 @@ func videoFixture(t *testing.T) (*Store, Input, string) {
 		t.Fatal(err)
 	}
 	audio := false
-	in := Input{CanvasID: canvasID, NodeID: nodeID, Model: ark.VideoModel, Mode: "reference", Resolution: "480p", Ratio: "16:9", Duration: 4, GenerateAudio: &audio, References: []Reference{{promptSourceID, "source", "image"}}}
+	in := Input{CanvasID: canvasID, NodeID: nodeID, Model: ark.VideoModel, Mode: "reference", Resolution: "480p", Ratio: "16:9", Duration: 4, GenerateAudio: &audio, References: []Reference{{NodeID: promptSourceID, AssetKey: "source", Kind: "image"}}}
 	return db, in, "60606060-6060-4060-8060-606060606060"
 }
 func awaitVideo(t *testing.T, db *Store, id, status string) Task {
@@ -181,11 +181,11 @@ func TestVideoAmbiguousCreateAndInvalidBindings(t *testing.T) {
 	db, in, id := videoFixture(t)
 	ctx := context.Background()
 	bad := in
-	bad.References = []Reference{{nodeID, "source", "image"}}
+	bad.References = []Reference{{NodeID: nodeID, AssetKey: "source", Kind: "image"}}
 	if _, err := db.CreateVideoTask(ctx, id, bad); err == nil {
 		t.Fatal("wrong node accepted")
 	}
-	bad.References = []Reference{{promptSourceID, "source", "video"}}
+	bad.References = []Reference{{NodeID: promptSourceID, AssetKey: "source", Kind: "video"}}
 	if _, err := db.CreateVideoTask(ctx, id, bad); err == nil {
 		t.Fatal("wrong media accepted")
 	}
@@ -204,5 +204,46 @@ func TestVideoAmbiguousCreateAndInvalidBindings(t *testing.T) {
 	defer stop()
 	if fake.creates.Load() != 1 || fake.queries.Load() != 0 {
 		t.Fatal("ambiguous create retried")
+	}
+}
+
+func TestVideoDetailedFailuresPersistAndReleaseCreditsOnce(t *testing.T) {
+	for _, phase := range []string{"submission", "generation"} {
+		t.Run(phase, func(t *testing.T) {
+			db, in, id := videoFixture(t)
+			ctx := context.Background()
+			if err := db.GrantCredits(ctx, testUserID, 1000, "video-errors-test-grant"); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := db.QuoteCredits(ctx, testUserID, "video", in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.CreateBilledTask(ctx, testUserID, id, "video", in, quote.Points, quote.PriceVersion); err != nil {
+				t.Fatal(err)
+			}
+			failure := &ark.APIError{Code: "VIDEO_REJECTED_IMAGE_PRIVACY", Message: "参考图片 1被模型判定可能包含真人，未通过人像审核。"}
+			fake := &videoFake{createError: failure}
+			if phase == "generation" {
+				failure = &ark.APIError{Code: "PROVIDER_OUTPUT_SENSITIVE", Message: "生成的视频未通过模型内容审核。"}
+				fake.createError = nil
+				fake.query = func(context.Context) (ark.VideoResponse, error) {
+					return ark.VideoResponse{ID: "cgt-test", Status: "failed", Failure: failure}, nil
+				}
+			}
+			stop := startWorker(t, db, fake, fake)
+			task := awaitVideo(t, db, id, "failed")
+			stop()
+			// Duplicate completion must not return the reservation a second time.
+			db.finish(ctx, id, "failed", nil, failure)
+			account, err := db.Credits(ctx, testUserID)
+			if err != nil || account != (CreditAccount{Available: 1000}) || task.CreditStatus != "released" || task.Error == nil || task.Error.Code != failure.Code || task.Error.Message != failure.Message {
+				t.Fatalf("wrong persisted error/refund: task=%+v account=%+v err=%v", task, account, err)
+			}
+			var releases int
+			if err = db.Pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger WHERE task_id=$1 AND operation='release'`, id).Scan(&releases); err != nil || releases != 1 || fake.creates.Load() != 1 || fake.saves.Load() != 0 {
+				t.Fatalf("wrong call/refund count: releases=%d creates=%d saves=%d err=%v", releases, fake.creates.Load(), fake.saves.Load(), err)
+			}
+		})
 	}
 }

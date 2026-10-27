@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { auth, login } from '../auth/session'
-const props = defineProps<{ resumeEmail?: string; createAfterLogin?: boolean }>()
+const props = defineProps<{ resumeEmail?: string }>()
 const email = ref(props.resumeEmail || '')
 const password = ref('')
 const visible = ref(false)
 const busy = ref(false)
 const error = ref('')
-const title = computed(() => props.resumeEmail ? '继续你的创作' : props.createAfterLogin ? '登录后创建画布' : '进入你的工作空间')
+const title = computed(() => props.resumeEmail ? '继续你的创作' : '进入你的工作空间')
 async function submit() {
   if (busy.value) return
   // Count Unicode characters like the backend; never truncate a pasted password.

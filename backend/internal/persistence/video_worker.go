@@ -63,7 +63,7 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 		urls := []string{}
 		var err error
 		if len(keys) > 0 {
-			spec, ok := ark.VideoSpec(t.Input.Model)
+			spec, ok := videoSpec(t.Input)
 			if !ok {
 				s.finish(ctx, t.ID, "failed", nil, &ark.APIError{Code: "INVALID_VIDEO_INPUT", Message: "视频模型无效。"})
 				return
@@ -95,7 +95,7 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 			return
 		}
 		t.StartedAt = &submittedAt
-		id, err := generator.CreateVideo(ctx, ark.VideoRequest{Prompt: t.CompiledPrompt, Model: t.Input.Model, Mode: t.Input.Mode, Resolution: t.Input.Resolution, Ratio: t.Input.Ratio, Duration: t.Input.Duration, GenerateAudio: t.Input.GenerateAudio == nil || *t.Input.GenerateAudio, References: refs})
+		id, err := generator.CreateVideo(ctx, ark.VideoRequest{TaskID: t.ID, Prompt: t.CompiledPrompt, Model: t.Input.Model, Mode: t.Input.Mode, Parameters: t.Input.Parameters, Resolution: t.Input.Resolution, Ratio: t.Input.Ratio, Duration: t.Input.Duration, GenerateAudio: t.Input.GenerateAudio == nil || *t.Input.GenerateAudio, References: refs})
 		if err != nil {
 			failure := videoFailure(err)
 			status := "failed"
@@ -143,6 +143,15 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 						break
 					}
 					result := &Result{ImageResult: ark.ImageResult{Model: t.Input.Model}, Resolution: out.Resolution, Ratio: out.Ratio, Duration: out.Duration, FramesPerSecond: out.FramesPerSecond}
+					if result.Resolution == "" {
+						result.Resolution = t.Input.Resolution
+					}
+					if result.Ratio == "" {
+						result.Ratio = t.Input.Ratio
+					}
+					if result.Duration <= 0 && t.Input.Duration > 0 {
+						result.Duration = t.Input.Duration
+					}
 					if !s.retryWrite(ctx, func(c context.Context) error {
 						_, err := s.Pool.Exec(c, `UPDATE generation_tasks SET status='saving',provider_status='succeeded',provider_url=$2,result=$3,polling_error=NULL,updated_at=now() WHERE id=$1 AND status='running'`, t.ID, out.Content.URL, result)
 						return err
@@ -157,7 +166,15 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 						_, err := s.Pool.Exec(c, `UPDATE generation_tasks SET provider_status=$2,polling_error=NULL,updated_at=now() WHERE id=$1`, t.ID, out.Status)
 						return err
 					})
-					s.finish(ctx, t.ID, "failed", nil, &ark.APIError{Code: "PROVIDER_" + strings.ToUpper(out.Status), Message: "供应商视频任务" + map[string]string{"failed": "失败", "expired": "已过期", "cancelled": "已取消"}[out.Status] + "，请检查素材、提示词和模型控制台。"})
+					failure := out.Failure
+					if failure == nil {
+						failure = &ark.APIError{Code: "PROVIDER_" + strings.ToUpper(out.Status), Message: map[string]string{
+							"failed":    "模型视频生成失败，具体原因暂未识别；请联系管理员查看任务诊断记录。",
+							"expired":   "视频任务超过模型允许的执行时间，已过期；请稍后重新提交。",
+							"cancelled": "视频任务已被模型服务取消，请核查供应商任务记录后再试。",
+						}[out.Status]}
+					}
+					s.finish(ctx, t.ID, "failed", nil, failure)
 					return
 				case "queued", "running":
 				default:

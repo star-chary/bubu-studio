@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
-import { test, expect } from './setup'
+import { test, expect, selectArkModel } from './setup'
 import type { CanvasSnapshot, GenerationTask, SavedCanvas } from '../src/api/persistence'
 
 const imageBytes = readFileSync(fileURLToPath(new URL('./fixtures/sample-image.png', import.meta.url)))
@@ -79,6 +79,8 @@ async function addImage(page: Page) {
   await page.getByRole('menuitem', { name: '图片', exact: true }).click()
   const node = page.getByRole('article', { name: '图片节点 1', exact: true })
   await node.click({ position: { x: 60, y: 70 } })
+  // 新节点默认未选择模型；Ark 生成回归先显式选择 Lite。
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
   return node
 }
 async function saved(page: Page) { await expect(page.getByLabel('画布保存状态')).toHaveText('画布已保存') }
