@@ -23,7 +23,7 @@ func TestAPIMartStartingImageAndNativeOptionsAreDurable(t *testing.T) {
 	in.Parameters = map[string]any{"mode": "pro", "aspect_ratio": "16:9", "duration": 6, "audio": false}
 	in.References[0].Role = "first_frame"
 	in.PromptParts = []PromptPart{{Type: "reference", NodeID: promptSourceID, Kind: "image", Name: "source"}, {Type: "text", Text: " moves"}}
-	task, err := db.CreateAPIMartVideoTask(ctx, testUserID, id, in)
+	task, err := db.CreateVideoTask(ctx, id, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestAPIMartReferenceTaskKeepsSupplierAfterCanvasChanges(t *testing.T) {
 	}
 	in.Provider, in.Model, in.Prompt = ProviderAPIMart, apimart.VideoModel, "@source moves slowly"
 	in.PromptParts = []PromptPart{{Type: "reference", NodeID: promptSourceID, Kind: "image", Name: "source"}, {Type: "text", Text: " moves slowly"}}
-	task, err := db.CreateAPIMartVideoTask(ctx, testUserID, id, in)
+	task, err := db.CreateVideoTask(ctx, id, in)
 	if err != nil || task.CompiledPrompt != "@图片1 moves slowly" {
 		t.Fatal(task.CompiledPrompt, err)
 	}
@@ -124,7 +124,7 @@ func TestAPIMartTaskNeverFallsBackToArk(t *testing.T) {
 	}
 	in := Input{Provider: ProviderAPIMart, Model: apimart.VideoModel, Mode: "text", Prompt: "A paper boat", CanvasID: canvasID, NodeID: nodeID, Resolution: "720p", Ratio: "16:9", Duration: 5}
 	id := "70707070-7070-4070-8070-707070707070"
-	if _, err := db.CreateAPIMartVideoTask(ctx, testUserID, id, in); err != nil {
+	if _, err := db.CreateVideoTask(ctx, id, in); err != nil {
 		t.Fatal(err)
 	}
 	fake := &videoFake{}

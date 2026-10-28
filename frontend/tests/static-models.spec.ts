@@ -43,8 +43,8 @@ async function parameters(page: Page, kind: 'image' | 'video') {
 }
 
 test('固定清单只包含采纳的主力与候选，基础参数都有文档来源和合法初值', () => {
-  expect(catalogModelsFor('image')).toHaveLength(16)
-  expect(catalogModelsFor('video')).toHaveLength(22)
+  expect(catalogModelsFor('image')).toHaveLength(6)
+  expect(catalogModelsFor('video')).toHaveLength(20)
   expect(new Set(STATIC_MODELS.map((model) => model.optionId)).size).toBe(STATIC_MODELS.length)
   expect(STATIC_MODELS.filter((model) => model.modelId === 'midjourney').map((model) => model.optionId)).toEqual([
     'midjourney-8.2', 'midjourney-8.1', 'midjourney-7', 'midjourney-niji7',
@@ -55,7 +55,7 @@ test('固定清单只包含采纳的主力与候选，基础参数都有文档�
   expect(catalogModelFor('grok-imagine-video-1.5', 'video')?.group).toBe('primary')
   for (const model of STATIC_MODELS) {
     expect(model.document).toMatch(/^https:\/\/docs\.apimart\.ai\//)
-    expect(model.generationEnabled).toBe(model.category === 'image' || (model.category === 'video' && !!model.videoModes?.length))
+    expect(catalogModelsFor(model.category).some((item) => item.optionId === model.optionId)).toBe(model.generationEnabled)
     const defaults = defaultParametersFor(model)
     for (const field of model.parameters!.parameters) {
       expect(['ratio', 'resolution', 'duration', 'audio', 'count']).toContain(field.role)
@@ -68,7 +68,9 @@ test('固定清单只包含采纳的主力与候选，基础参数都有文档�
 test('参数按供应商原字段保存，时长特殊值、固定数量和联动不伪造范围', () => {
   const seedance = catalogModelFor('seedance-2.5', 'video')!
   const duration = seedance.parameters!.parameters.find((field) => field.role === 'duration')!
-  expect(validParameterValue(duration, -1, {})).toBe(true)
+  expect(validParameterValue(duration, -1, {})).toBe(true) // Historical model contract remains readable.
+  const wanDuration = catalogModelFor('wan3.0-video', 'video')!.parameters!.parameters.find((field) => field.role === 'duration')!
+  expect(validParameterValue(wanDuration, -1, {})).toBe(false)
   for (const value of [0, 3, 31]) expect(validParameterValue(duration, value, {})).toBe(false)
   expect(normalizeParametersFor(seedance, { aspect_ratio: '9:16', duration: 8, generate_audio: false }).value).toMatchObject({ size: '9:16', duration: 8, generate_audio: false })
   expect(catalogModelFor('gemini-omni-1.1-flash', 'video')!.parameters!.parameters.some((field) => field.role === 'duration')).toBe(false)
@@ -123,46 +125,34 @@ test('初次打开与过期缓存均不请求目录，所有固定型号都能�
   }
 })
 
-test('Midjourney 版本切换和高清布尔值保存恢复，不串到 Niji，模型只选中一项', async ({ page }, info) => {
-  const db = await setupCanvas(page, 'image')
-  await choose(page, 'midjourney-8.2')
-  let dialog = await parameters(page, 'image')
-  await dialog.getByRole('radio', { name: '高清', exact: true }).check()
-  await expect.poll(() => db.selection().parameters.hd).toBe(true)
+test('有价格疑义的图片型号从菜单隐藏，历史草稿保留', async ({ page }) => {
+  const original: ModelSelection = { provider: 'apimart', modelId: 'midjourney', parameters: { version: '8.2', niji: false, hd: true } }
+  const db = await setupCanvas(page, 'image', original)
+  await selector(page).click()
+  for (const id of ['midjourney-8.2', 'midjourney-niji7', 'gemini-nano-banana-2.1', 'gpt-image-2.5-flare', 'flux-2-flex']) {
+    await expect(page.locator(`[data-model-option="${id}"]`)).toHaveCount(0)
+  }
   await page.keyboard.press('Escape')
-  await choose(page, 'midjourney-niji7')
-  await expect.poll(() => db.selection().parameters).toMatchObject({ version: '7', niji: true })
-  expect(db.selection().modelId).toBe('midjourney')
-  expect(db.selection().parameters.hd).toBeUndefined()
   await page.reload()
   await page.getByRole('article', { name: '测试节点', exact: true }).click({ position: { x: 70, y: 80 } })
-  await expect(selector(page)).toContainText('Niji 7')
-  await selector(page).click()
-  await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1)
-  await page.keyboard.press('Escape')
-  await choose(page, 'midjourney-7')
-  await expect.poll(() => db.selection().parameters.niji).toBe(false)
-  await choose(page, 'midjourney-8.1')
-  dialog = await parameters(page, 'image')
-  await expect(dialog.getByRole('radio', { name: '标准', exact: true })).toBeChecked()
-  await dialog.screenshot({ path: info.outputPath('midjourney-8.1.png') })
+  expect(db.selection()).toEqual(original)
+  await expect(page.getByRole('button', { name: '生成暂未接入' })).toBeDisabled()
   expect(db.forbidden()).toBe(0)
 })
 
 test('历史基础字段别名能回显，编辑只替换该项，未展示高级字段仍保存', async ({ page }, info) => {
-  const db = await setupCanvas(page, 'video', { provider: 'apimart', modelId: 'seedance-2.5', parameters: {
+  const db = await setupCanvas(page, 'video', { provider: 'apimart', modelId: 'wan3.0-video', parameters: {
     aspect_ratio: '4:3', resolution: '720p', duration: 8, seed: 42, output_format: 'mov', custom: { untouched: true },
   } })
   const dialog = await parameters(page, 'video')
   await expect(dialog.getByRole('radio', { name: '4:3', exact: true })).toBeChecked()
-  await expect(dialog.getByRole('slider')).toHaveAttribute('min', '4')
+  await expect(dialog.getByRole('slider')).toHaveAttribute('min', '2')
   await expect(dialog.getByRole('slider')).toHaveAttribute('max', '30')
   await dialog.getByRole('radio', { name: '9:16', exact: true }).check()
   await expect.poll(() => db.selection().parameters.size).toBe('9:16')
   expect(db.selection().parameters.aspect_ratio).toBeUndefined()
   expect(db.selection().parameters).toMatchObject({ seed: 42, output_format: 'mov', custom: { untouched: true } })
-  await dialog.getByRole('radio', { name: '自动时长', exact: true }).check()
-  await expect.poll(() => db.selection().parameters.duration).toBe(-1)
+  await expect(dialog.getByRole('radio', { name: '自动时长', exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 820, height: 640 })
   await expect.poll(async () => {
     const box = await dialog.boundingBox()
@@ -173,16 +163,17 @@ test('历史基础字段别名能回显，编辑只替换该项，未展示高�
   await page.reload()
   await page.getByRole('article', { name: '测试节点', exact: true }).click({ position: { x: 70, y: 80 } })
   const restored = await parameters(page, 'video')
-  await expect(restored.getByRole('radio', { name: '自动时长', exact: true })).toBeChecked()
+  await expect(restored.getByRole('slider')).toHaveValue('8')
   expect(db.selection().parameters.custom).toEqual({ untouched: true })
   expect(db.forbidden()).toBe(0)
 })
 
 test('生成数量保持整数，固定数量只读，原生 mode 和音频字段正确保存', async ({ page }) => {
   const image = await setupCanvas(page, 'image')
-  await choose(page, 'gpt-image-2.5-flare')
+  await choose(page, 'seedream-5-0-lite')
   let dialog = await parameters(page, 'image')
-  await dialog.getByRole('group', { name: '生成数量', exact: true }).getByRole('radio', { name: '4张' }).check()
+  await dialog.getByRole('spinbutton', { name: '生成数量', exact: true }).fill('4')
+  await dialog.getByRole('spinbutton', { name: '生成数量', exact: true }).blur()
   await expect.poll(() => image.selection().parameters.n).toBe(4)
   await page.keyboard.press('Escape')
   await choose(page, 'seedream-5-0-pro')
@@ -215,11 +206,9 @@ test('清晰度改变会调整不兼容时长，模型不支持的时长控件�
   await expect.poll(() => db.selection().parameters.duration).toBe(8)
   await expect(dialog.getByRole('group', { name: '视频时长', exact: true }).getByRole('radio')).toHaveCount(1)
   await page.keyboard.press('Escape')
-  await choose(page, 'gemini-omni-1.1-flash')
-  dialog = await parameters(page, 'video')
-  await expect(dialog.getByRole('group', { name: '视频时长', exact: true })).toHaveCount(0)
-  await expect.poll(() => db.selection().modelId).toBe('gemini-omni-1.1-flash')
-  expect(db.selection().parameters.duration).toBeUndefined()
+  await selector(page).click()
+  await expect(page.locator('[data-model-option="gemini-omni-1.1-flash"]')).toHaveCount(0)
+  await page.keyboard.press('Escape')
   expect(db.forbidden()).toBe(0)
 })
 

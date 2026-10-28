@@ -96,9 +96,6 @@ func videoHandler(store AssetStore, db *persistence.Store) gin.HandlerFunc {
 			return
 		}
 		create := func() (persistence.Task, error) {
-			if input.Provider == persistence.ProviderAPIMart {
-				return db.CreateAPIMartVideoTask(c.Request.Context(), c.GetString("userID"), in.TaskID, input)
-			}
 			return db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), in.TaskID, "video", input, in.AcceptedPoints, in.PriceVersion)
 		}
 		// Resolve an existing idempotency key before checking mutable service state.

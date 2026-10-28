@@ -1,7 +1,6 @@
 package persistence
 
 import (
-	"context"
 	"strings"
 	"unicode/utf8"
 
@@ -30,15 +29,4 @@ func normalizeAPIMartImageInput(in *Input) error {
 		in.Prompt = strings.TrimSpace(in.Prompt)
 	}
 	return nil
-}
-
-// Reuse generation_tasks with legacy credit status, matching APIMart video.
-func (s *Store) CreateAPIMartImageTask(ctx context.Context, userID, id string, input Input) (Task, error) {
-	if !ValidID(id) || normalizeAPIMartImageInput(&input) != nil {
-		return Task{}, ErrInvalid
-	}
-	if err := s.RequireCanvasOwner(ctx, input.CanvasID, userID); err != nil {
-		return Task{}, err
-	}
-	return s.CreateTask(ctx, id, input)
 }

@@ -94,7 +94,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 						return
 					}
 				}
-				task, err := db.CreateAPIMartImageTask(c.Request.Context(), c.GetString("userID"), input.TaskID, request)
+				task, err := db.CreateBilledTask(c.Request.Context(), c.GetString("userID"), input.TaskID, "image", request, input.AcceptedPoints, input.PriceVersion)
 				if err != nil {
 					videoHTTPFailure(c, err)
 					return

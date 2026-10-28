@@ -2,6 +2,8 @@
 
 2026-10-26，本地实现。型号文档、请求转换、前端操作与真实供应商验收分别记录；尚未发布线上。
 
+2026-10-28 更新：新任务接入固定积分报价，因计价不确定隐藏 Seedance 2.5 和 Gemini Omni 1.1 Flash，现可选择 20 个视频模型。历史能力映射和验收记录仍保留；当前计费与模型范围以 [APIMart 固定积分](./apimart-fixed-credits.md) 为准。
+
 ## 功能与交互
 
 视频节点统一使用「模型 → 功能 → 参数」。功能列表固定为文生视频、全能参考、图生视频；模型不支持的项直接置灰，没有暂未开放或待确认等原因分类。没有接入当前工作流的型号不进入新选择列表；旧画布仍保留其选择和草稿。
@@ -20,10 +22,10 @@
 ```text
 节点模型、功能、参数与明确的起始图片
   → 前端输入校验，保存画布
-  → POST /api/videos/generations
+  → POST /api/credits/quote → 展示固定积分 → POST /api/videos/generations
   → Session / CSRF / 画布归属 / 已保存型号校验
   → 按共同静态契约验证功能、原生 parameters、素材角色
-  → 固定任务 provider、model、mode、parameters 和素材绑定
+  → 复核报价并在事务中冻结积分，固定任务 provider、model、mode、parameters 和素材绑定
   → 后台签发自有素材地址，按型号转换为供应商字段
   → 一次提交 APIMart → 查询原任务 → 转存 OSS
   → 素材与结果落库 → 原节点播放、刷新恢复
@@ -33,7 +35,7 @@
 
 型号之间的区别包含：`size` / `aspect_ratio`、清晰度 `resolution` / `mode`、`audio` / `generate_audio`、普通 `image_urls`、带角色的图片、`first_frame_image`、PixVerse 的 `img_references` 和 SkyReels 的 `ref_images`。提示词素材标签也按型号编译，保留普通文字。
 
-沿用现有任务表、素材表和画布 JSONB，没有新表或迁移。本轮 APIMart 生成继续不参与平台积分报价、冻结和结算；原有方舟链路保留。
+沿用现有任务表、素材表、积分账户／流水和画布 JSONB，没有新表或迁移。APIMart 新任务参与平台积分报价、冻结和结算；原有方舟链路保留。
 
 ## 型号范围
 

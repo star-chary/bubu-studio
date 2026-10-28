@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"frame-space/backend/internal/apimart"
 	"frame-space/backend/internal/ark"
 	"frame-space/backend/internal/storage"
 	"github.com/jackc/pgx/v5"
@@ -137,13 +138,11 @@ func (s *Store) prepareCreditTask(ctx context.Context, userID, kind string, inpu
 	if err != nil {
 		return nil, "", err
 	}
-	// 报价与任务创建共享的公共业务入口：目录草稿节点不得进入 Ark 生成链路，
-	// 拒绝发生在绑定参考素材、编译提示词与冻结积分之前。
-	if node.Data.ModelSelection != nil && node.Data.ModelSelection.Provider == ProviderAPIMart {
-		return nil, "", ErrModelGenerationNotEnabled
-	}
 	if node.Data.Kind != kind || node.Data.Origin == "upload" {
 		return nil, "", ErrInvalid
+	}
+	if err := validateTaskProvider(node, input, kind); err != nil {
+		return nil, "", err
 	}
 	bindings, err := s.bindReferences(ctx, input, kind)
 	if err != nil {
@@ -160,11 +159,20 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 	if kind != "image" && kind != "video" {
 		return CreditQuote{}, ErrInvalid
 	}
-	// 报价入口同样确认节点供应商，避免 APIMart 节点触发旧报价与价格换算。
+	if err := s.RequireCanvasOwner(ctx, input.CanvasID, userID); err != nil {
+		return CreditQuote{}, err
+	}
 	if err := s.RequireGenerationEnabled(ctx, input.CanvasID, input.NodeID); err != nil {
 		return CreditQuote{}, err
 	}
-	if kind == "image" {
+	if input.Provider == ProviderAPIMart {
+		if !apimart.Billable(kind, input.Model) {
+			return CreditQuote{}, ErrModelGenerationNotEnabled
+		}
+		if kind == "image" && normalizeAPIMartImageInput(&input) != nil || kind == "video" && NormalizeVideoInput(&input) != nil {
+			return CreditQuote{}, ErrInvalid
+		}
+	} else if kind == "image" {
 		model, err := ark.ResolveImageModel(input.Model)
 		if err != nil || len(input.ReferenceKeys) > ark.MaxReferenceImages(model) {
 			return CreditQuote{}, ErrInvalid
@@ -183,6 +191,18 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 	bindings, _, err := s.prepareCreditTask(ctx, userID, kind, input)
 	if err != nil {
 		return CreditQuote{}, err
+	}
+	if input.Provider == ProviderAPIMart {
+		resolution := input.Resolution
+		if kind == "image" {
+			resolution, _ = input.Parameters["resolution"].(string)
+		}
+		audio := input.GenerateAudio != nil && *input.GenerateAudio
+		points, ok := apimart.FixedCredits(kind, input.Model, resolution, input.Duration, audio, len(bindings))
+		if !ok {
+			return CreditQuote{}, ErrInvalid
+		}
+		return CreditQuote{Points: points, PriceVersion: apimart.BillingVersion()}, nil
 	}
 	var yuan float64
 	if kind == "image" {
@@ -279,6 +299,9 @@ func (s *Store) CreateBilledTask(ctx context.Context, userID, id, kind string, i
 	if !ValidID(id) {
 		return Task{}, ErrInvalid
 	}
+	if kind == "image" && input.Provider == ProviderAPIMart && normalizeAPIMartImageInput(&input) != nil {
+		return Task{}, ErrInvalid
+	}
 	if kind == "video" && NormalizeVideoInput(&input) != nil {
 		return Task{}, ErrInvalid
 	}
@@ -367,6 +390,14 @@ func creditCompletion(kind, oldStatus, status string, result *Result, failure *a
 		return "release"
 	}
 	if status == "failed" && failure != nil {
+		// Both adapters return these errors before issuing an HTTP request.
+		if oldStatus == "submitting" && (failure.Code == "MODEL_NOT_CONFIGURED" || failure.Code == "INVALID_IMAGE_INPUT" || failure.Code == "INVALID_VIDEO_INPUT") {
+			return "release"
+		}
+		switch failure.Code {
+		case "APIMART_REJECTED", "APIMART_AUTH_FAILED", "APIMART_BALANCE_INSUFFICIENT", "APIMART_RATE_LIMITED", "APIMART_CONTENT_REJECTED", "APIMART_GENERATION_FAILED", "APIMART_CANCELLED":
+			return "release"
+		}
 		if kind == "video" {
 			if strings.HasPrefix(failure.Code, "PROVIDER_") || failure.Code == "VIDEO_REJECTED" || strings.HasPrefix(failure.Code, "VIDEO_REJECTED_") || failure.Code == "MODEL_AUTH_FAILED" || failure.Code == "MODEL_LIMITED" {
 				return "release"

@@ -22,10 +22,10 @@ test('每个图片型号的默认参数都能构建单图请求', () => {
   }
   const oldMidjourney = { provider: 'apimart' as const, modelId: 'midjourney', parameters: { version: '7', niji: true, size: '1:1', hd: true } }
   const request = apimartImageInput(oldMidjourney, { canvasId: canvasID, nodeId: targetID, prompt: 'A paper boat' }, [])
-  expect(request!.parameters).toMatchObject({ version: '7', niji: true, hd: false })
+  expect(request).toBeNull()
 })
 
-async function setup(page: Page, model = 'seedream-5-0-lite', count = 1, reference = false) {
+async function setup(page: Page, model = 'seedream-5-0-lite', count = 1, reference = false, available = 200) {
   const png = readFileSync(new URL('./fixtures/sample-image.png', import.meta.url))
   const canvas: SavedCanvas = { id: canvasID, version: 1, updatedAt: new Date().toISOString(), assets: [], tasks: [], results: [], snapshot: {
     viewport: { x: 0, y: 0, zoom: 1 }, nodes: [{ id: targetID, position: { x: 80, y: 130 }, data: {
@@ -39,8 +39,8 @@ async function setup(page: Page, model = 'seedream-5-0-lite', count = 1, referen
   }
   const submissions: TaskInput[] = []
   let quotes = 0
-  await page.route('**/api/credits', (route) => route.fulfill({ status: 503, json: { error: { message: '余额服务不可用' } } }))
-  await page.route('**/api/credits/quote', (route) => { quotes++; return route.abort() })
+  await page.route('**/api/credits', (route) => route.fulfill({ json: { available, reserved: 0 } }))
+  await page.route('**/api/credits/quote', (route) => { quotes++; return route.fulfill({ json: { points: 6, priceVersion: 'apimart-test-v1' } }) })
   await page.route('**/api/persistence/config', (route) => route.fulfill({ json: { enabled: true } }))
   await page.route('**/api/assets/content?*', (route) => route.fulfill({ body: png, contentType: 'image/png' }))
   await page.route('**/api/canvases**', (route) => {
@@ -69,17 +69,18 @@ async function setup(page: Page, model = 'seedream-5-0-lite', count = 1, referen
   return { canvas, submissions, quotes: () => quotes }
 }
 
-test('多张中转站图片无需平台积分，分别回填并在刷新后恢复', async ({ page }) => {
+test('多张中转站图片显示总报价，每张携带单价提交并在刷新后恢复', async ({ page }) => {
   const state = await setup(page, 'seedream-5-0-lite', 2)
   await editor(page).fill('A paper boat on a calm lake.')
   await expect(generate(page)).toBeEnabled()
+  await expect(page.locator('.credit-cost-trigger')).toHaveText('12')
   await generate(page).click()
   await expect.poll(() => state.submissions.length).toBe(2)
   expect(state.submissions.every((item) => item.provider === 'apimart' && item.model === 'seedream-5-0-lite')).toBe(true)
   expect(state.submissions.map((item) => item.parameters)).toEqual([{ size: '1:1', resolution: '2K', n: 1 }, { size: '1:1', resolution: '2K', n: 1 }])
-  expect(state.submissions[0]).not.toHaveProperty('acceptedPoints')
+  expect(state.submissions.every((item) => item.acceptedPoints === 6 && item.priceVersion === 'apimart-test-v1')).toBe(true)
   expect(state.submissions[0]!.nodeId).not.toBe(state.submissions[1]!.nodeId)
-  expect(state.quotes()).toBe(0)
+  expect(state.quotes()).toBeGreaterThan(0)
   await expect(page.getByRole('article', { name: '中转站图片', exact: true }).locator('img')).toBeVisible()
   await expect(page.getByRole('article', { name: '中转站图片 · 2', exact: true }).locator('img')).toBeVisible()
   await page.getByRole('button', { name: '保存', exact: true }).click()
@@ -103,6 +104,15 @@ test('图生图提交已保存素材 Key，不支持参考的型号阻止提交'
   await editor(page).fill('Make a sketch.')
   await expect(page.getByText(/不支持参考图片/)).toBeVisible()
   await expect(generate(page)).toBeDisabled()
+})
+
+test('中转站图片余额不足时仍展示固定报价，但不发送生成请求', async ({ page }) => {
+  const state = await setup(page, 'seedream-5-0-lite', 2, false, 11)
+  await editor(page).fill('A paper boat.')
+  await expect(page.locator('.credit-cost-trigger')).toHaveText('12')
+  await expect(page.getByText('积分不足', { exact: true })).toBeVisible()
+  await expect(generate(page)).toBeDisabled()
+  expect(state.submissions).toHaveLength(0)
 })
 
 test('历史草稿参数无效时提示检查参数，不能出现可点击但无反应的生成按钮', async ({ page }) => {

@@ -51,7 +51,7 @@ test('旧画布默认为 2.5 全能参考，模型菜单和文生视频模式可
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   const models = page.getByRole('listbox', { name: '视频模型' })
-  await expect(models.getByRole('option')).toHaveCount(25) // 3 个方舟型号 + 22 个通用视频生成型号
+  await expect(models.getByRole('option')).toHaveCount(23) // 3 个方舟型号 + 20 个固定报价的中转站型号
   await expect(models.getByRole('option').first()).toContainText('Seedance 2.5')
   await expect(models.getByRole('option').first()).toHaveAttribute('aria-selected', 'true')
   await page.screenshot({ path: info.outputPath('video-model-menu.png') })

@@ -1,10 +1,6 @@
 package persistence
 
-import (
-	"context"
-
-	"frame-space/backend/internal/apimart"
-)
+import "frame-space/backend/internal/apimart"
 
 func enabledAPIMartVideoNode(node Node) bool {
 	sel := node.Data.ModelSelection
@@ -27,16 +23,4 @@ func validateTaskProvider(node Node, input Input, kind string) error {
 		return ErrModelGenerationNotEnabled
 	}
 	return nil
-}
-
-// This first APIMart integration does not quote, reserve or settle platform
-// points. It still requires an owned canvas and the explicitly supported node.
-func (s *Store) CreateAPIMartVideoTask(ctx context.Context, userID, id string, input Input) (Task, error) {
-	if _, ok := apimart.VideoDefinition(input.Model); input.Provider != ProviderAPIMart || !ok || !ValidID(id) {
-		return Task{}, ErrInvalid
-	}
-	if err := s.RequireCanvasOwner(ctx, input.CanvasID, userID); err != nil {
-		return Task{}, err
-	}
-	return s.CreateVideoTask(ctx, id, input)
 }

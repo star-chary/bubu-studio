@@ -2,6 +2,7 @@ import type { CatalogModel, CatalogParameter, ModelSelection } from './modelCata
 import { APIMART_VIDEO_MODELS, apimartVideoDefinition } from './apimartVideoDefinitions'
 import { apimartImageDefinition } from './apimartImageDefinitions'
 import type { VideoMode } from './videoModels'
+import billing from '../../../backend/internal/apimart/billing_models.json' with { type: 'json' }
 
 export const MODEL_CONFIG_VERSION = 'static-models.2026-10-26'
 type Field = Omit<CatalogParameter, 'required'> & { required?: boolean }
@@ -28,7 +29,7 @@ function add(category: 'image' | 'video', modelId: string, name: string, group: 
 	const definition = category === 'image' ? apimartImageDefinition(modelId) : undefined
 	const { references = definition ? { image: { max: definition.maxReferenceImages, info: 'complete' } } : {}, ...metadata } = extra
   models.push({
-	  provider: 'apimart', modelId, optionId: modelId, name, group, category, generationEnabled: !!definition,
+	  provider: 'apimart', modelId, optionId: modelId, name, group, category, generationEnabled: !!definition && modelId in billing.images,
     document: `https://docs.apimart.ai/en/api-reference/${category === 'image' ? 'images' : 'videos'}/${path}`,
     parameters: { status: 'ready', schemaVersion: MODEL_CONFIG_VERSION, references, parameters: fields.map((field) => ({ ...field, required: field.required ?? false })) },
     ...metadata,
@@ -72,16 +73,18 @@ for (const definition of APIMART_VIDEO_MODELS) {
   models.push({
     provider: 'apimart', category: 'video', optionId: definition.modelId,
     modelId: definition.modelId, name: definition.name, group: definition.group,
-    document: definition.document, generationEnabled: definition.generationEnabled, videoModes: definition.modes,
+    document: definition.document, generationEnabled: definition.generationEnabled && definition.modelId in billing.videos, videoModes: definition.modes,
     parameters: {
-      status: 'ready', schemaVersion: MODEL_CONFIG_VERSION, parameters: definition.parameters,
+      // Automatic duration cannot be priced before submission. Preserve the
+      // adapter contract for existing tasks, but do not offer it for new ones.
+      status: 'ready', schemaVersion: MODEL_CONFIG_VERSION, parameters: definition.parameters.map((field) => definition.modelId in billing.videos && field.role === 'duration' ? { ...field, specialValues: [] } : field),
       references: { image: { max: definition.maxReferenceImages, info: 'complete' }, video: { max: 0, info: 'complete' }, audio: { max: 0, info: 'complete' } },
     },
   })
 }
 
 export const STATIC_MODELS: readonly CatalogModel[] = models
-export function catalogModelsFor(category: 'image' | 'video'): CatalogModel[] { return models.filter((model) => model.category === category && (category !== 'video' || model.generationEnabled)) }
+export function catalogModelsFor(category: 'image' | 'video'): CatalogModel[] { return models.filter((model) => model.category === category && model.generationEnabled) }
 
 // modelId 是供应商身份；optionId 只用于菜单，同一 Midjourney 接口有四个版本选项。
 export function catalogModelFor(modelId: string, category: 'image' | 'video', parameters?: Record<string, unknown>, videoMode?: VideoMode): CatalogModel | undefined {

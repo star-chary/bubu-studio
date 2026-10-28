@@ -15,7 +15,7 @@ async function setup(page: Page, reference?: 'image' | 'audio') {
   const canvas: SavedCanvas = { id: canvasID, version: 1, updatedAt: new Date().toISOString(), assets: [], tasks: [], results: [], snapshot: {
     viewport: { x: 0, y: 0, zoom: 1 }, nodes: [{ id: targetID, position: { x: 80, y: 130 }, data: {
       kind: 'video', name: '中转站视频', prompt: '', videoMode: 'reference', referenceIds: reference ? [sourceID] : [],
-      modelSelection: { provider: 'apimart', modelId: 'seedance-2.5', parameters: { size: '16:9', resolution: '720p', duration: 5, generate_audio: false, seed: 42 } },
+      modelSelection: { provider: 'apimart', modelId: 'seedance-2.0', parameters: { size: '16:9', resolution: '720p', duration: 5, generate_audio: false, seed: 42 } },
     } }],
   } }
   if (reference) {
@@ -24,8 +24,8 @@ async function setup(page: Page, reference?: 'image' | 'audio') {
   }
   const submissions: TaskInput[] = []
   let quotes = 0
-  await page.route('**/api/credits', (route) => route.fulfill({ status: 503, json: { error: { message: '余额服务不可用' } } }))
-  await page.route('**/api/credits/quote', (route) => { quotes++; return route.abort() })
+  await page.route('**/api/credits', (route) => route.fulfill({ json: { available: 200, reserved: 0 } }))
+  await page.route('**/api/credits/quote', (route) => { quotes++; return route.fulfill({ json: { points: 124, priceVersion: 'apimart-test-v1' } }) })
   await page.route('**/api/persistence/config', (route) => route.fulfill({ json: { enabled: true } }))
   await page.route('**/api/assets/content?*', (route) => route.fulfill({ body: route.request().url().includes('key=output') ? mp4 : png, contentType: route.request().url().includes('key=output') ? 'video/mp4' : 'image/png' }))
   await page.route('**/api/canvases**', (route) => {
@@ -55,7 +55,7 @@ async function setup(page: Page, reference?: 'image' | 'audio') {
   return { canvas, submissions, quotes: () => quotes }
 }
 
-test('APIMart 文生视频无需积分报价，结果回填可播放并在刷新后恢复', async ({ page }, info) => {
+test('APIMart 文生视频按固定报价提交，结果回填并在刷新后恢复', async ({ page }, info) => {
   const state = await setup(page)
   await page.getByRole('button', { name: /^选择视频生成类型/ }).click()
   const modes = page.getByRole('listbox', { name: '视频生成模式' })
@@ -65,15 +65,15 @@ test('APIMart 文生视频无需积分报价，结果回填可播放并在刷新
   await expect(generate(page)).toBeDisabled()
   await editor(page).fill('A paper boat moves slowly on calm water.')
   await expect(generate(page)).toBeEnabled()
+  await expect(page.locator('.credit-cost-trigger')).toHaveText('124')
   await generate(page).click()
   const target = page.getByRole('article', { name: '中转站视频', exact: true })
   await expect(target.locator('video')).toHaveJSProperty('readyState', 4)
   expect(state.submissions).toHaveLength(1)
-  expect(state.submissions[0]).toMatchObject({ provider: 'apimart', model: 'seedance-2.5', mode: 'text', ratio: '16:9', resolution: '720p', duration: 5, generateAudio: false })
-  expect(state.submissions[0]).not.toHaveProperty('acceptedPoints')
+  expect(state.submissions[0]).toMatchObject({ provider: 'apimart', model: 'seedance-2.0', mode: 'text', ratio: '16:9', resolution: '720p', duration: 5, generateAudio: false, acceptedPoints: 124, priceVersion: 'apimart-test-v1' })
   expect(state.submissions[0]).not.toHaveProperty('references')
   expect(state.submissions[0]).not.toHaveProperty('seed')
-  expect(state.quotes()).toBe(0)
+  expect(state.quotes()).toBeGreaterThan(0)
   await page.mouse.click(700, 100)
   await target.getByRole('button', { name: '播放视频', exact: true }).click()
   await expect.poll(() => target.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(0)
@@ -104,7 +104,7 @@ test('APIMart 全能参考提交已保存图片，切换文生保留参考草稿
   await generate(page).click()
   await expect.poll(() => state.submissions.length).toBe(1)
   expect(state.submissions[0]).toMatchObject({ provider: 'apimart', mode: 'reference', references: [{ nodeId: sourceID, assetKey: 'source', kind: 'image' }] })
-  expect(state.quotes()).toBe(0)
+  expect(state.quotes()).toBeGreaterThan(0)
   await expect(page.getByRole('article', { name: '中转站视频', exact: true }).locator('video')).toHaveJSProperty('readyState', 4)
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   await page.getByRole('option', { name: 'Kling 4.0（APIMart）', exact: true }).click()
@@ -163,7 +163,6 @@ test('切换模型保留兼容功能，不兼容时选择已支持的默认功�
   await expect(page.getByRole('button', { name: /^选择视频生成类型，当前文生视频/ })).toBeVisible()
   await expect(editor(page)).toHaveText('A geometric animation.')
   expect(state.canvas.snapshot.nodes[0]!.data.referenceIds).toEqual([sourceID])
-  expect(state.quotes()).toBe(0)
 })
 
 test('图生不会自动挑选已有参考图，明确选择后保存首帧角色并提交', async ({ page }, info) => {
@@ -187,9 +186,9 @@ test('图生不会自动挑选已有参考图，明确选择后保存首帧角�
   await page.screenshot({ path: info.outputPath('first-frame-restored.png') })
   await generate(page).click()
   await expect.poll(() => state.submissions.length).toBe(1)
-  expect(state.submissions[0]).toMatchObject({ mode: 'image', provider: 'apimart', ratio: 'adaptive', parameters: { size: 'adaptive', resolution: '720p', duration: 5, generate_audio: false }, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'image', role: 'first_frame' }] })
+  expect(state.submissions[0]).toMatchObject({ mode: 'image', provider: 'apimart', ratio: '16:9', parameters: { size: '16:9', resolution: '720p', duration: 5, generate_audio: false }, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'image', role: 'first_frame' }] })
   expect(state.submissions[0]!.parameters).not.toHaveProperty('seed')
-  expect(state.quotes()).toBe(0)
+  expect(state.quotes()).toBeGreaterThan(0)
 })
 
 test('移除已指定起始图后禁用生成并清理首帧选择', async ({ page }) => {
@@ -204,16 +203,11 @@ test('移除已指定起始图后禁用生成并清理首帧选择', async ({ pa
   expect(state.submissions).toHaveLength(0)
 })
 
-test('不同供应商字段随提交保存，未定义时长的型号不补造时长', async ({ page }) => {
-  const state = await setup(page)
-  await chooseModel(page, 'Gemini Omni 1.1 Flash')
-  await chooseMode(page, '文生视频')
-  await editor(page).fill('A calm cinematic landscape.')
-  await generate(page).click()
-  await expect.poll(() => state.submissions.length).toBe(1)
-  expect(state.submissions[0]).toMatchObject({ model: 'gemini-omni-1.1-flash', mode: 'text', parameters: { aspect_ratio: '16:9', resolution: '720p', audio: true } })
-  expect(state.submissions[0]).not.toHaveProperty('duration')
-  expect(state.submissions[0]!.parameters).not.toHaveProperty('duration')
+test('实际时长无法确定的型号不出现在视频模型列表', async ({ page }) => {
+  await setup(page)
+  await page.getByRole('button', { name: /^选择视频模型/ }).click()
+  await expect(page.getByRole('option', { name: 'Gemini Omni 1.1 Flash（APIMart）', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('option', { name: 'Seedance 2.5（APIMart）', exact: true })).toHaveCount(0)
 })
 
 test('仅支持文生与图生的型号可使用首帧，不会被普通参考能力的限制误拦截', async ({ page }) => {

@@ -1,6 +1,6 @@
 # APIMart 图片生成（本地）
 
-更新：2026-10-27。本次连接图片节点的 APIMart 型号；改动尚未发布，尚未执行真实付费出图。上游接口与参数以 [APIMart 图片生成](https://docs.apimart.ai/en/api-reference/images/seedream-5-lite/generation)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status) 及各型号文档为依据。
+更新：2026-10-28。APIMart 图片新任务需要固定积分报价，当前开放 6 个模型；改动尚未发布，尚未执行真实付费出图。计费与隐藏范围见 [APIMart 固定积分](./apimart-fixed-credits.md)。上游接口与参数以 [APIMart 图片生成](https://docs.apimart.ai/en/api-reference/images/seedream-5-lite/generation)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status) 及各型号文档为依据。
 
 ## 使用和数据流
 
@@ -8,18 +8,19 @@
 
 ```text
 画布保存模型和参考 → 前端固定本次参数、生成一个或多个单图任务
-→ POST /api/images/generations（Session、CSRF、画布归属校验）
-→ generation_tasks 保存供应商、参数、提示词和素材绑定
+→ POST /api/credits/quote（返回单图固定积分）→ 页面按张数显示总额
+→ POST /api/images/generations（Session、CSRF、画布归属、报价复核）
+→ 事务冻结积分，generation_tasks 保存供应商、价格、参数和素材绑定
 → 图片执行槽核验并签发参考图片地址 → APIMart 异步提交一次
 → 保存供应商任务 ID、查询原任务 → saving 转存到现有 OSS
 → assets 和任务结果入库 → 前端回填图片，刷新后恢复
 ```
 
-继续使用 `canvases.snapshot`、`generation_tasks`、`assets`，不新增表或迁移。APIMart 图片任务与现有 APIMart 视频相同，暂不报价、冻结或结算**平台积分**，任务积分状态为 `legacy`；中转站实际调用仍可能扣除中转站余额。历史方舟图片及其平台积分逻辑保留。
+继续使用 `canvases.snapshot`、`generation_tasks`、`assets` 和积分账户／流水，不新增表或迁移。新的 APIMart 图片任务按固定报价冻结和结算平台积分；2026-10-28 之前的 `legacy` 任务不追补扣分。中转站实际调用仍可能扣除中转站余额。历史方舟图片及其积分规则保留。
 
-界面选择多张时，平台为每张创建独立节点并提交独立任务，供应商每次请求的 `n` 为 1。批量提交发生错误时停止提交后续任务，已接收的任务继续执行；用户需查看任务状态，避免重复生成。Midjourney Imagine 一次本来返回四宫格及四张裁切图，当前节点保存并展示四宫格，尚不提供四张裁切图的独立节点或 U/V 后续操作。
+界面选择多张时，平台为每张创建独立节点并提交独立任务，供应商每次请求的 `n` 为 1。批量提交发生错误时停止提交后续任务，已接收的任务继续执行；用户需查看任务状态，避免重复生成。Midjourney 已从新任务菜单隐藏；历史任务使用的四宫格结果展示逻辑保留。
 
-支持固定清单中的 16 个图片选项；模型及参考图数量上限由前后端共享的 `backend/internal/apimart/image_models.json` 约束。无明确供应商数量上限的型号仍受平台现有单任务最多 14 张参考图片限制；这些限制不代表供应商的最大能力。Z Image Turbo 暂只开放文生图。Seedream 5.0 Lite 的自动比例需要参考图。素材还需满足项目存储限制及各模型的实际格式、尺寸要求；更严格的供应商限制可能导致任务失败。
+现开放 6 个图片模型；模型及参考图数量上限由前后端共享的 `backend/internal/apimart/image_models.json` 约束，价格与开放范围来自 `billing_models.json`。Z Image Turbo 暂只开放文生图。Seedream 5.0 Lite 的自动比例需要参考图。素材还需满足项目存储限制及各模型的实际格式、尺寸要求；更严格的供应商限制可能导致任务失败。
 
 参考图只能来自当前画布已登记的其他图片节点。后端检查实际文件并签发 2 小时临时地址，地址只用于中转站读取，不由前端提交。图片生成请求仅转发固定的基础字段；未展示的历史高级草稿仍保留在画布，但不传给供应商。
 
@@ -30,6 +31,6 @@
 ## 本地验证
 
 - 供应商 HTTP 模拟：按型号校验参数和参考图数量，覆盖标准图片与 Midjourney 的提交、查询结果及不确定提交不重发。
-- 独立 `frame_space_test` PostgreSQL：完整 Go 测试、所有权、幂等、平台积分隔离、重启后继续查询同一任务。
-- 浏览器模拟：默认型号请求、文生图、图生图、多任务与回填、刷新恢复、余额服务不可用及视频和方舟回归。真实中转站及真实 OSS 转存尚未在本次验收。
+- 2026-10-27 历史阶段：独立 `frame_space_test` PostgreSQL 验证所有权、幂等、当时的平台积分隔离和重启后继续查询同一任务；浏览器模拟验证默认型号、文生图、图生图、多任务回填及刷新恢复。
+- 2026-10-28 的固定报价、冻结和结算验证见 [APIMart 固定积分](./apimart-fixed-credits.md)。真实中转站及真实 OSS 转存尚未在本次验收。
 - 已准备 `frontend/scripts/verify-live-apimart-image.mjs`，仅在明确授权两次真实调用后运行：依次提交 1 次文生图、1 次使用项目合成素材的图生图；单次 2K / 1:1 / 1 张，遇到失败或提交状态不明立即停止。脚本在请求发出前记录任务 ID，已有记录只续查，不另建替代任务；测试会创建单独的本地账号、画布和 OSS 素材。会话文件写入 Git 忽略的验收目录。

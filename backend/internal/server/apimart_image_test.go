@@ -37,6 +37,22 @@ func (f *fullImageFake) SaveGenerated(_ context.Context, _, _ string, scope stor
 	return storage.Asset{Key: "output", URL: "/api/assets/content?key=output", Kind: storage.Image, Source: storage.Generated, Scope: scope}, nil
 }
 
+func quoteAPIMart(t *testing.T, h http.Handler, owner *authClient, kind string, body map[string]any) persistence.CreditQuote {
+	t.Helper()
+	request := make(map[string]any, len(body)+1)
+	for key, value := range body {
+		request[key] = value
+	}
+	request["kind"] = kind
+	w := authRequest(h, owner, http.MethodPost, "/api/credits/quote", request, nil)
+	assertStatus(t, w, 200)
+	var quote persistence.CreditQuote
+	if json.Unmarshal(w.Body.Bytes(), &quote) != nil || quote.Points <= 0 || quote.PriceVersion != apimart.BillingVersion() {
+		t.Fatalf("invalid quote: %s", w.Body.String())
+	}
+	return quote
+}
+
 func TestAPIMartImageHTTPWorkerAndStorageFlow(t *testing.T) {
 	db := authDB(t)
 	fake := &fullImageFake{}
@@ -55,6 +71,8 @@ func TestAPIMartImageHTTPWorkerAndStorageFlow(t *testing.T) {
 	}
 	defer func() { cancel(); <-done }()
 	body := map[string]any{"taskId": taskID, "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "seedream-5-0-lite", "prompt": "A paper boat", "parameters": map[string]any{"size": "1:1", "resolution": "2K", "n": 1}}
+	quote := quoteAPIMart(t, h, owner, "image", body)
+	body["acceptedPoints"], body["priceVersion"] = quote.Points, quote.PriceVersion
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/images/generations", body, nil), 202)
 	var task persistence.Task
 	deadline := time.Now().Add(8 * time.Second)
@@ -69,12 +87,16 @@ func TestAPIMartImageHTTPWorkerAndStorageFlow(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if task.Status != "succeeded" || task.Result == nil || task.Result.Asset == nil || task.Result.URL != "/api/assets/content?key=output" || fake.creates.Load() != 1 || fake.queries.Load() != 1 || fake.saves.Load() != 1 {
+	if task.Status != "succeeded" || task.CreditStatus != "settled" || task.CreditPoints != quote.Points || task.Result == nil || task.Result.Asset == nil || task.Result.URL != "/api/assets/content?key=output" || fake.creates.Load() != 1 || fake.queries.Load() != 1 || fake.saves.Load() != 1 {
 		t.Fatalf("incomplete HTTP to worker flow: %+v", task)
+	}
+	account, err := db.Credits(t.Context(), owner.session.User.ID)
+	if err != nil || account.Available != persistence.SignupTestCredits-quote.Points || account.Reserved != 0 {
+		t.Fatalf("incorrect settled balance: %+v %v", account, err)
 	}
 }
 
-func TestAPIMartImageTaskIsOwnedIdempotentAndDoesNotReservePoints(t *testing.T) {
+func TestAPIMartImageTaskIsOwnedIdempotentAndReservesPoints(t *testing.T) {
 	db := authDB(t)
 	h := NewRouter(nil, &creditTestStorage{}, db)
 	owner := signIn(t, h, "apimart-image@example.test", "api-image-pass1")
@@ -85,10 +107,13 @@ func TestAPIMartImageTaskIsOwnedIdempotentAndDoesNotReservePoints(t *testing.T) 
 	assertStatus(t, authRequest(h, owner, http.MethodPut, "/api/canvases/"+canvasID, map[string]any{"version": 0, "snapshot": snapshot}, nil), 200)
 	body := map[string]any{"taskId": taskID, "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "seedream-5-0-lite", "prompt": "A paper boat", "parameters": map[string]any{"size": "16:9", "resolution": "2K", "n": 1}}
 	assertStatus(t, authRequest(h, other, http.MethodPost, "/api/images/generations", body, nil), 404)
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/images/generations", body, nil), 409)
+	quote := quoteAPIMart(t, h, owner, "image", body)
+	body["acceptedPoints"], body["priceVersion"] = quote.Points, quote.PriceVersion
 	w := authRequest(h, owner, http.MethodPost, "/api/images/generations", body, nil)
 	assertStatus(t, w, 202)
 	var task persistence.Task
-	if json.Unmarshal(w.Body.Bytes(), &task) != nil || task.Input.Provider != "apimart" || task.CreditStatus != "legacy" || task.CreditPoints != 0 {
+	if json.Unmarshal(w.Body.Bytes(), &task) != nil || task.Input.Provider != "apimart" || task.CreditStatus != "reserved" || task.CreditPoints != quote.Points {
 		t.Fatal(w.Body.String())
 	}
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/images/generations", body, nil), 202)
@@ -102,7 +127,7 @@ func TestAPIMartImageTaskIsOwnedIdempotentAndDoesNotReservePoints(t *testing.T) 
 	if err := db.Pool.QueryRow(t.Context(), `SELECT count(*) FROM generation_tasks`).Scan(&tasks); err != nil || tasks != 1 {
 		t.Fatal(tasks, err)
 	}
-	if err := db.Pool.QueryRow(t.Context(), `SELECT count(*) FROM credit_ledger WHERE operation <> 'grant'`).Scan(&reserves); err != nil || reserves != 0 {
+	if err := db.Pool.QueryRow(t.Context(), `SELECT count(*) FROM credit_ledger WHERE operation = 'reserve'`).Scan(&reserves); err != nil || reserves != 1 {
 		t.Fatal(reserves, err)
 	}
 	snapshot.Nodes[0].Data.ModelSelection = nil

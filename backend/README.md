@@ -1,5 +1,7 @@
 # Bubu Studio 后端
 
+2026-10-28 本地新增 APIMart 固定积分：新图片／视频任务均先报价、提交时核价并在同一事务冻结积分，成功交付结算、明确失败退回。图片开放 6 个模型、视频开放 20 个模型；定价来源、隐藏范围与验证边界见 [APIMart 固定积分](../docs/apimart-fixed-credits.md)。没有新增表或迁移，旧 `legacy` 任务不追补。
+
 2026-10-26 扩展 APIMart 视频型号接入：前后端共用 `internal/apimart/video_models.json`，按型号开放文生、普通图片参考、单图起始画面生成。任务固定供应商、功能、原生基础参数和素材角色，复用持久化队列、素材转存和前端回填。该链路不参与平台积分；未接入的专用工作流不进入菜单。无新表或迁移，真实调用与长等待记录见 [视频型号与功能接入](../docs/apimart-video-models.md)。旧目录与 Schema 请求保持移除，`GET /api/model-catalog` 返回404。
 
 2026-10-08 BuBu-后台管理：新增 `/api/admin/*` 的管理员登录、用户分页／搜索、积分发放／流水接口，以及 `cmd/set-admin` 初始化工具。迁移 `007_admin.sql` 在已有用户表添加角色，在积分流水补充来源、操作者和原因；不新增业务表。普通登录和管理登录复用 PostgreSQL Session + HttpOnly Cookie，管理接口实时核验 admin 角色。发放和审计在同一事务，重试使用唯一请求编号；与生成冻结共用账户行锁。Go 全包真实数据库测试、vet、构建和管理端真实浏览器验收通过；已随 `20261008T055817Z` 发布线上，并完成正式 HTTPS 的登录、用户查询、发放防重／审计、画布余额与权限验收，临时数据已清理，见 [管理端说明](../docs/admin.md)。
@@ -89,11 +91,11 @@ backend/
 
 测试积分接口：`GET /api/credits` 返回当前用户的 `{available,reserved}`，`GET /api/credits/ledger` 返回分页流水，`POST /api/credits/quote` 为已保存的图片或视频节点报价。积分发放没有公开 HTTP 接口；新注册账号由 `LoginOrCreate` 在注册事务中获得一次 200 分及唯一流水，旧账号登录不补发。生成提交时后端重新报价；缺积分返回 402 / `CREDITS_INSUFFICIENT`，报价版本或分数变化返回 409 / `CREDIT_QUOTE_CHANGED`，资源不属于当前用户或不存在返回 404 / `NOT_FOUND`。这些拒绝不创建任务、不调用方舟。接口及状态机见 [测试积分](../docs/test-credits.md)。
 
-模型与基础参数由本地配置直接展示，后端已移除旧模型目录接口。节点 `modelSelection` 草稿随画布快照保存，历史型号和高级字段仍能保存。APIMart 支持固定清单内的视频与图片生成，提交须与已保存节点的供应商和型号匹配；未接入型号继续返回 `MODEL_GENERATION_NOT_ENABLED`。APIMart 不进入方舟报价或积分提交链路。见 [固定模型与基础参数](../docs/apimart-model-catalog.md)。
+模型与基础参数由本地配置直接展示，后端已移除旧模型目录接口。节点 `modelSelection` 草稿随画布快照保存，历史型号和高级字段仍能保存。APIMart 支持固定价格清单内的视频与图片生成，提交须与已保存节点的供应商和型号匹配；未开放型号继续返回 `MODEL_GENERATION_NOT_ENABLED`。APIMart 和方舟共用积分账户及任务结算流程，但使用各自价格版本。见 [固定模型与基础参数](../docs/apimart-model-catalog.md)。
 
 ## 图片生成接口
 
-**当前模式：** 需有效 Session，写请求需 CSRF Token；画布与节点必须归当前用户所有并先通过保存 API 入库。方舟请求先调用 `POST /api/credits/quote`，将报价随任务提交；APIMart 图片请求使用 `provider: "apimart"` 和模型基础 `parameters`，暂不请求或扣除平台积分。两者均需 UUID `taskId`，返回任务对象并通过任务接口查询。最终图片位于 `task.result`，失败位于 `task.error`。同 ID 相同输入重交返回原任务。APIMart 接入与当前验收边界见 [APIMart 图片生成](../docs/apimart-image-generation.md)，方舟积分规则见 [测试积分](../docs/test-credits.md)。
+**当前模式：** 需有效 Session，写请求需 CSRF Token；画布与节点必须归当前用户所有并先通过保存 API 入库。方舟和 APIMart 均需先调用 `POST /api/credits/quote`，将报价与版本随任务提交；APIMart 图片请求使用 `provider: "apimart"` 和模型基础 `parameters`。均需 UUID `taskId`，返回任务对象并通过任务接口查询。最终图片位于 `task.result`，失败位于 `task.error`。同 ID 相同输入重交返回原任务。APIMart 接入与当前验收边界见 [APIMart 图片生成](../docs/apimart-image-generation.md)，积分规则见 [测试积分](../docs/test-credits.md)。
 
 `POST /api/images/generations`，`Content-Type: application/json`：
 

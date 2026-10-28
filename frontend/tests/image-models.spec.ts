@@ -3,8 +3,8 @@ import { expect, test, addNodeViaContextMenu } from './setup'
 
 const lite = 'Doubao-Seedream-5.0-lite'
 const pro = 'Doubao-Seedream-5.0-pro'
-const gptImage = 'GPT Image 2.5 Flare（APIMart）'
-const seedreamPro = 'Niji 7（APIMart）'
+const gptImage = 'FLUX 3 Image（APIMart）'
+const seedreamPro = 'Z Image Turbo（APIMart）'
 const selector = (page: Page) => page.getByRole('button', { name: /^选择模型/ })
 
 test('模型列表选择按节点保存，点击空白和 Esc 分层关闭', async ({ page }, testInfo) => {
@@ -20,11 +20,11 @@ test('模型列表选择按节点保存，点击空白和 Esc 分层关闭', asy
   await expect(selector(page)).toContainText('选择模型')
   await selector(page).click()
   const menu = page.getByRole('listbox', { name: '图片模型' })
-  await expect(menu.getByRole('option')).toHaveCount(18)
+  await expect(menu.getByRole('option')).toHaveCount(8)
   await expect(menu.getByRole('option', { name: lite, exact: true })).toBeVisible()
   await expect(menu.getByRole('option', { name: gptImage, exact: true })).toBeVisible()
   await expect(menu.getByRole('option', { name: seedreamPro, exact: true })).toBeVisible()
-  await expect(menu.getByRole('option', { name: gptImage, exact: true })).toHaveText('GPT Image 2.5 Flare')
+  await expect(menu.getByRole('option', { name: gptImage, exact: true })).toHaveText('FLUX 3 Image')
   expect((await menu.boundingBox())!.y).toBeGreaterThanOrEqual(16)
   await menu.getByRole('option', { name: pro, exact: true }).click()
   await expect(menu).toHaveCount(0)
@@ -64,7 +64,6 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
   const panel = page.getByRole('dialog')
   await selector(page).focus()
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   const menu = page.getByRole('listbox', { name: '图片模型' })
   await expect(page.getByRole('option', { name: lite, exact: true })).toBeFocused()
   await page.keyboard.press('End')
@@ -73,7 +72,7 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
   await expect(page.getByRole('option', { name: lite, exact: true })).toBeFocused()
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('Enter')
-  await expect(selector(page)).toContainText('Niji 7')
+  await expect(selector(page)).toContainText('Z Image Turbo')
   await expect(menu).toHaveCount(0)
   await panel.getByRole('button', { name: '放大输入框', exact: true }).click()
   await selector(page).click()
@@ -96,7 +95,6 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
     return box.y + box.height < (await selector(page).boundingBox())!.y
   }).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('image-model-menu-mobile.png') })
-  await page.keyboard.press('Tab')
   await expect(menu.getByRole('option', { name: seedreamPro, exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(menu).toHaveCount(0)

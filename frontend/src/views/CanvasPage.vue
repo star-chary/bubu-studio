@@ -95,12 +95,10 @@ const activeInputReady = computed(() => !!activePromptNode.value && !!generation
 const quoteRequest = computed(() => {
   const node = activePromptNode.value
   if (auth.status !== 'authenticated' || !node || node.data.kind === 'audio') return null
-  // 目录草稿节点（含未选择状态）不进入旧 Ark 报价链路。
-  if (node.data.modelSelection) return null
   const input = generationInputFor(node.id)
   if (!input) return null
   const kind = node.data.kind
-  const count = kind === 'image' ? normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions).count : 1
+  const count = kind === 'image' ? (node.data.modelSelection ? apimartImageCount(node.data.modelSelection) : normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions).count) : 1
   return { kind, input, count, key: JSON.stringify({ kind, ...input, count }) }
 })
 const creditQuote = ref<CreditQuote | null>(null)
@@ -146,15 +144,9 @@ watch(saveError, (error, previous) => { if (previous && !error && quoteStatus.va
 onBeforeUnmount(() => { quoteSequence++; if (quoteTimer) clearTimeout(quoteTimer); quoteController?.abort() })
 async function generateActiveNode() {
   const node = activePromptNode.value
-  if (node && ((node.data.kind === 'video' && apimartVideoEnabled(node.data.modelSelection)) || (node.data.kind === 'image' && apimartImageEnabled(node.data.modelSelection)))) {
-    const input = generationInputFor(node.id)
-    if (input) await generateNode(node.id, { input, ...(node.data.kind === 'image' ? { count: apimartImageCount(node.data.modelSelection!) } : {}) })
-    return
-  }
   const request = quoteRequest.value
   const quote = creditQuote.value
-  // 目录草稿节点没有报价请求；公共生成入口再检查一次，不只在按钮上禁用。
-  if (!node || node.data.modelSelection || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
+  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
   await generateNode(node.id, { input: request.input, quote, count: request.count })
   await refreshCredits()
   if (quoteRequest.value?.key === request.key) refreshQuote()

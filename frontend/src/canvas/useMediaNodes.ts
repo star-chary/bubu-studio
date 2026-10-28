@@ -246,7 +246,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (!node || node.data.kind !== 'image' || generationRequests.has(id) || node.data.generation?.status === 'generating' || node.data.status === 'loading') return
     const input = acceptedInputFor(id, accepted)
     if (!input) return
-    if (input.provider !== 'apimart' && !quote) return
+    if (!quote) return
     const options = normalizeImageOptions(node.data.imageModel ?? DEFAULT_IMAGE_MODEL, node.data.imageOptions)
     const count = accepted.count ?? 1
     const currentCount = input.provider === 'apimart' ? apimartImageCount(node.data.modelSelection!) : options.count
@@ -288,7 +288,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
         if (disposed) return
         if (!findNode(job.nodeId)) throw new Error('目标节点已移除，剩余图片未提交。')
         updateNodeData(job.nodeId, { generation: { status: 'generating', taskId: job.taskId, prompt, model, referenceKeys } })
-        const billing = input.provider === 'apimart' ? {} : { acceptedPoints: quote!.points, priceVersion: quote!.priceVersion }
+        const billing = { acceptedPoints: quote.points, priceVersion: quote.priceVersion }
         const task = await submitTask(job.taskId, { ...input, nodeId: job.nodeId, ...billing })
         submitted++
         if (!disposed) session.track(task, true)
@@ -339,7 +339,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (!node || node.data.kind !== 'video' || generationRequests.has(id) || node.data.generation?.status === 'generating') return
     const input = acceptedInputFor(id, accepted)
     if (!input) return
-    if (input.provider !== 'apimart' && !accepted.quote) return
+    if (!accepted.quote) return
     const prompt = input.prompt
     const taskId = crypto.randomUUID()
     generationRequests.set(id, new AbortController())
@@ -347,7 +347,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     try {
       await session.flush()
       if (disposed || !findNode(id)) return
-      const billing = input.provider === 'apimart' ? {} : { acceptedPoints: accepted.quote!.points, priceVersion: accepted.quote!.priceVersion }
+      const billing = { acceptedPoints: accepted.quote.points, priceVersion: accepted.quote.priceVersion }
       const task = await submitTask(taskId, { ...input, ...billing }, 'video')
       if (!disposed) session.track(task, true)
     }

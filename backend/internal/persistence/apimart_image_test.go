@@ -56,7 +56,8 @@ func imageTaskFixture(t *testing.T) (*Store, string) {
 	}
 	id := "60606060-6060-4060-8060-606060606060"
 	in := Input{Provider: ProviderAPIMart, Model: "seedream-5-0-lite", Prompt: "paper boat", CanvasID: canvasID, NodeID: nodeID, Parameters: map[string]any{"size": "1:1", "resolution": "2K", "n": 1}}
-	if _, err := db.CreateAPIMartImageTask(context.Background(), testUserID, id, in); err != nil {
+	// Exercise recovery of a task created before APIMart credit billing.
+	if _, err := db.CreateTask(context.Background(), id, in); err != nil {
 		t.Fatal(err)
 	}
 	return db, id

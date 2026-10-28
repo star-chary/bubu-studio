@@ -94,9 +94,8 @@ const insufficientCredits = computed(() => !!props.creditQuote && props.creditsA
 const generateDisabled = computed(() => {
   if (!props.canGenerate || mentionError.value || generating.value || props.mediaLoading || props.selectingReferences || props.referenceError || promptLength.value > 2000 || !props.persistenceEnabled) return true
   if ((props.kind === 'image' || textVideo.value || apimartVideo.value) && !promptLength.value) return true
-  if (apimartVideo.value) return selectedVideoMode.value === 'reference' && !props.references.length
-  if (apimartImage.value) return !props.inputReady
-  return props.quoteStatus !== 'ready' || !props.creditQuote || props.creditsStatus !== 'ready' || insufficientCredits.value
+  if (apimartVideo.value && selectedVideoMode.value === 'reference' && !props.references.length) return true
+  return !props.inputReady || props.quoteStatus !== 'ready' || !props.creditQuote || props.creditsStatus !== 'ready' || insufficientCredits.value
 })
 const creditHint = computed(() => {
   if (!props.persistenceEnabled) return '请先使用已保存画布，才能生成并使用测试积分。'
@@ -282,15 +281,15 @@ onBeforeUnmount(() => {
       <p v-else-if="imageVideo" class="generation-hint video-reference-status" :class="{ 'has-error': referenceError }" role="status">{{ referenceError || '使用选定图片作为起始画面，其余参考素材保留但本次不提交' }}</p>
       <p v-else class="generation-hint" role="status">{{ apimartReferenceHint }}<template v-if="referenceError"> · {{ referenceError }}</template></p>
     </template>
-    <p v-if="provider === 'ark' && canGenerate && creditNotice" class="generation-hint credit-notice" role="status">{{ creditNotice }}</p>
-    <button v-if="provider === 'ark' && canGenerate && quoteStatus === 'error' && persistenceEnabled" class="retry-quote" type="button" @click="emit('retryQuote')">重新获取报价</button>
+    <p v-if="canGenerate && creditNotice" class="generation-hint credit-notice" role="status">{{ creditNotice }}</p>
+    <button v-if="canGenerate && quoteStatus === 'error' && persistenceEnabled" class="retry-quote" type="button" @click="emit('retryQuote')">重新获取报价</button>
     <footer v-if="editable" class="prompt-generation-footer">
       <div class="generation-options">
         <ImageGenerationControls v-if="kind === 'image'" :key="nodeId" ref="imageControls" :model-value="image" :image-model="imageModel" :selection="modelSelection" :panel-position="layout" @update:model-value="emit('update:imageOptions', $event)" @update:image-model="emit('update:imageModel', $event)" @choose-model="emit('choose-model', $event)" @update:parameter="(key, value) => emit('update:parameter', key, value)" />
         <VideoGenerationControls v-else :key="nodeId" ref="videoControls" :model-value="video" :video-model="videoModel" :video-mode="selectedVideoMode" :selection="modelSelection" :reference-count="references.length" :reference-error="referenceError" :panel-position="layout" @update:model-value="emit('update:videoOptions', $event)" @update:video-model="emit('update:videoModel', $event)" @update:video-mode="emit('update:videoMode', $event)" @choose-model="emit('choose-model', $event)" @update:parameter="(key, value) => emit('update:parameter', key, value)" />
       </div>
       <div v-if="canGenerate" class="generation-actions">
-        <details v-if="provider === 'ark'" :key="nodeId" class="credit-cost" :class="{ 'has-error': !!creditNotice }">
+        <details :key="nodeId" class="credit-cost" :class="{ 'has-error': !!creditNotice }">
           <summary class="credit-cost-trigger" :aria-label="`查看本次积分明细：${creditHint}`" title="查看本次积分明细">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.7 1.5 3.8 8h3.5l-.6 6.5 5.5-7H8.6z" /></svg>
             <span aria-live="polite">{{ creditAmount }}</span>
