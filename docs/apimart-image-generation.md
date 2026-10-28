@@ -1,6 +1,6 @@
-# APIMart 图片生成（本地）
+# APIMart 图片生成
 
-更新：2026-10-28。APIMart 图片新任务需要固定积分报价，当前开放 6 个模型；改动尚未发布，尚未执行真实付费出图。计费与隐藏范围见 [APIMart 固定积分](./apimart-fixed-credits.md)。上游接口与参数以 [APIMart 图片生成](https://docs.apimart.ai/en/api-reference/images/seedream-5-lite/generation)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status) 及各型号文档为依据。
+更新：2026-10-28。APIMart 图片新任务需要固定积分报价，当前开放 6 个模型；已随 `20261028T062150Z` 发布，尚未验证线上真实付费出图。计费与隐藏范围见 [APIMart 固定积分](./apimart-fixed-credits.md)。上游接口与参数以 [APIMart 图片生成](https://docs.apimart.ai/en/api-reference/images/seedream-5-lite/generation)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status) 及各型号文档为依据。
 
 ## 使用和数据流
 
