@@ -45,9 +45,6 @@ const filtered = computed(() => {
 const selected = computed(() => options.value.find((option) => option.optionId === props.modelValue && (!props.provider || option.provider === props.provider)))
 const selectedMissing = computed(() => !!props.modelValue && !selected.value)
 const selectedName = computed(() => selected.value?.name ?? [...IMAGE_MODELS, ...VIDEO_MODELS].find((model) => model.id === props.modelValue)?.name ?? props.modelValue)
-const groups = computed(() => [
-  { key: 'ark', label: '方舟' }, { key: 'apimart', label: 'APIMart' },
-].map((group) => ({ ...group, options: filtered.value.map((option, index) => ({ ...option, index })).filter((option) => option.provider === group.key) })).filter((group) => group.options.length))
 
 function positionMenu() {
   if (!open.value || !trigger.value || !menu.value) return
@@ -136,12 +133,12 @@ defineExpose({ close: closeMenu })
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
         <input ref="search" v-model="query" type="search" :aria-label="`搜索${listLabel}`" placeholder="搜索模型名称或 ID" @input="focusedIndex = 0" />
       </div>
-      <template v-for="group in groups" :key="group.key">
-        <div class="model-group-heading" :class="{ 'apimart-heading': group.key !== 'ark' }" aria-hidden="true">{{ group.label }}</div>
-        <button v-for="option in group.options" :key="`${option.provider}:${option.optionId}`" type="button" class="model-option"
+      <template v-for="(option, index) in filtered" :key="`${option.provider}:${option.optionId}`">
+        <div v-if="index > 0 && option.provider !== filtered[index - 1]?.provider" class="model-group-separator" aria-hidden="true"></div>
+        <button type="button" class="model-option"
           role="option" :data-provider="option.provider" :data-model-option="option.optionId"
           :aria-label="option.provider === 'apimart' ? `${option.name}（APIMart）` : option.name" :aria-selected="selected?.provider === option.provider && selected?.optionId === option.optionId"
-          :tabindex="option.index === focusedIndex ? 0 : -1" @focus="focusedIndex = option.index" @click="choose(option)">
+          :tabindex="index === focusedIndex ? 0 : -1" @focus="focusedIndex = index" @click="choose(option)">
           <span class="model-option-icon"><svg class="model-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7v6m4-9v12m3-7v7m3-10v10m4-8v6" /></svg></span>
           <span class="model-option-copy"><strong>{{ option.name }}</strong></span>
           <svg v-if="selected?.provider === option.provider && selected?.optionId === option.optionId" class="model-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
@@ -168,8 +165,7 @@ svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-li
 .model-search svg { width: 14px; height: 14px; color: #8f8f8f; }
 .model-search input { flex: 1; min-width: 0; padding: 8px 0; border: 0; background: transparent; color: #eee; font: inherit; font-size: 12px; outline: none; }
 .model-search input::-webkit-search-cancel-button { display: none; }
-.model-group-heading { margin: 6px 8px 4px; color: #8d8d8d; font-size: 11px; }
-.model-group-heading.apimart-heading { margin-top: 12px; border-top: 1px solid #3d3d3d; padding-top: 10px; }
+.model-group-separator { margin: 8px 8px; border-top: 1px solid #3d3d3d; }
 .model-option { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: #ebebeb; text-align: left; cursor: pointer; font: inherit; }
 .model-option + .model-option { margin-top: 3px; }
 .model-option[aria-selected="true"] { background: #414141; }

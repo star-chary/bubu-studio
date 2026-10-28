@@ -7,7 +7,7 @@ const gptImage = 'GPT Image 2.5 Flare（APIMart）'
 const seedreamPro = 'Niji 7（APIMart）'
 const selector = (page: Page) => page.getByRole('button', { name: /^选择模型/ })
 
-test('模型列表分组展示方舟与 APIMart，选择按节点保存，点击空白和 Esc 分层关闭', async ({ page }, testInfo) => {
+test('模型列表选择按节点保存，点击空白和 Esc 分层关闭', async ({ page }, testInfo) => {
   let calls = 0
   await page.route('**/api/images/generations', (route) => { calls++; return route.abort() })
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
