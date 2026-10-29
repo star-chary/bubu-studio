@@ -377,7 +377,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       updatedAt: task.updatedAt, createdAt: task.createdAt, providerStatus: task.providerStatus, pollingError: task.pollingError?.message,
       taskId: task.id, taskStatus: task.status, status: running ? 'generating' : failed ? 'error' : 'idle',
       prompt: task.input.prompt, model: task.input.model, referenceKeys: task.input.referenceKeys,
-      error: task.error?.message,
+      error: task.error?.message, errorCode: task.error?.code,
     }
     if (task.status === 'succeeded' && task.result?.url) {
       const result = task.result

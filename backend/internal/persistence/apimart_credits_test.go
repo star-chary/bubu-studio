@@ -59,10 +59,15 @@ func TestAPIMartCreditsReleaseAndUncertainReview(t *testing.T) {
 	if _, err := db.Pool.Exec(ctx, `UPDATE generation_tasks SET status='submitting' WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
-	db.finish(ctx, id, "interrupted", nil, &ark.APIError{Code: "SUBMISSION_UNKNOWN"})
-	task, err := db.Task(ctx, id)
+	// Simulate a restart while the create request may have reached the provider.
+	// Recovery must retain the reservation without calling CreateImage again.
+	fake := &imageProviderFake{}
+	stop := startWorker(t, db, fake, fake)
+	defer stop()
+	task := waitStatus(t, db, id, "interrupted")
+	_, err = db.Task(ctx, id)
 	account, accountErr := db.Credits(ctx, testUserID)
-	if err != nil || accountErr != nil || task.CreditStatus != "review" || account != (CreditAccount{Available: 24, Reserved: 6}) {
+	if err != nil || accountErr != nil || task.CreditStatus != "review" || task.Error == nil || task.Error.Code != "SUBMISSION_UNKNOWN" || fake.creates.Load() != 0 || account != (CreditAccount{Available: 24, Reserved: 6}) {
 		t.Fatalf("uncertain task should remain reserved: %+v %+v %v %v", task, account, err, accountErr)
 	}
 }

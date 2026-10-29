@@ -61,11 +61,14 @@ func (c *Client) CreateImage(ctx context.Context, in ImageRequest) (string, erro
 	if err != nil {
 		return "", &ark.APIError{Status: 503, Code: "MODEL_NOT_CONFIGURED", Message: "中转站接口配置无效。"}
 	}
+	req.GetBody = nil
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req, trace := traceSubmission(req)
 	unknown := &ark.APIError{Status: 502, Code: "SUBMISSION_UNKNOWN", Message: "无法确认中转站是否已受理图片，已保留任务记录，请核查后再试，未自动重新提交。"}
-	resp, err := c.http.Do(req)
+	resp, err := c.submitHTTP.Do(req)
 	if err != nil {
+		trace.log("image", in.TaskID, 0, submissionErrorKind(err))
 		return "", unknown
 	}
 	defer resp.Body.Close()
@@ -77,10 +80,12 @@ func (c *Client) CreateImage(ctx context.Context, in ImageRequest) (string, erro
 		} `json:"data"`
 	}
 	decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&wire)
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 && resp.StatusCode != 499 {
+	if explicitRejection(resp.StatusCode, decodeErr, wire.Error, len(wire.Data) > 0) {
+		trace.log("image", in.TaskID, resp.StatusCode, "provider_rejected")
 		return "", imageFailure(resp.StatusCode, wire.Error)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || decodeErr != nil || wire.Code != 200 || len(wire.Data) != 1 || !taskIDPattern.MatchString(wire.Data[0].TaskID) {
+		trace.log("image", in.TaskID, resp.StatusCode, "unexpected_response")
 		return "", unknown
 	}
 	return wire.Data[0].TaskID, nil

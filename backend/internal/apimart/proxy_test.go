@@ -67,6 +67,9 @@ func TestAPIMartUsesConfiguredLocalProxyForHTTPS(t *testing.T) {
 	transport := client.http.Transport.(*http.Transport)
 	transport.TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	defer transport.CloseIdleConnections()
+	submitTransport := client.submitHTTP.Transport.(*http.Transport)
+	submitTransport.TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	defer submitTransport.CloseIdleConnections()
 	client.baseURL = origin.URL
 	imageID, err := client.CreateImage(t.Context(), ImageRequest{Prompt: "paper boat", Model: "seedream-5-0-lite"})
 	if err != nil || imageID != "task_test" {
@@ -102,7 +105,7 @@ func TestAPIMartDoesNotBypassUnavailableProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.baseURL = origin.URL
-	client.http.Transport.(*http.Transport).TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	client.submitHTTP.Transport.(*http.Transport).TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	_, err = client.CreateImage(t.Context(), ImageRequest{Prompt: "paper boat", Model: "seedream-5-0-lite"})
 	var failure *ark.APIError
 	if !errors.As(err, &failure) || failure.Code != "SUBMISSION_UNKNOWN" || requests.Load() != 0 {

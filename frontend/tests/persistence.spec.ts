@@ -65,10 +65,10 @@ async function databaseMock(page: Page, initial?: SavedCanvas) {
     progress(status: GenerationTask['status']) {
       tasks[0] = { ...tasks[0]!, status, updatedAt: new Date().toISOString() }
     },
-    complete(status: 'succeeded' | 'failed' | 'interrupted' = 'succeeded') {
+    complete(status: 'succeeded' | 'failed' | 'interrupted' = 'succeeded', code = 'TEST_FAILURE') {
       tasks[0] = { ...tasks[0]!, status, updatedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
         result: status === 'succeeded' ? { url: resultURL, model } : undefined,
-        error: status === 'succeeded' ? undefined : { code: 'TEST_FAILURE', message: '任务已中断，未自动重新生成。' } }
+        error: status === 'succeeded' ? undefined : { code, message: '任务已中断，未自动重新生成。' } }
     },
   }
 }
@@ -84,6 +84,21 @@ async function addImage(page: Page) {
   return node
 }
 async function saved(page: Page) { await expect(page.getByLabel('画布保存状态')).toHaveText('画布已保存') }
+
+test('结果不明确的任务刷新后提示再次生成的费用风险，不自动重复提交', async ({ page }) => {
+  const db = await databaseMock(page)
+  await page.goto(`/?canvas=${canvasID}`)
+  const node = await addImage(page)
+  await page.getByRole('textbox').fill('待核查的生成任务')
+  await page.getByRole('button', { name: '生成图片', exact: true }).click()
+  await expect.poll(() => db.calls).toBe(1)
+  await saved(page)
+  db.complete('interrupted', 'SUBMISSION_UNKNOWN')
+  await page.reload()
+  await node.click({ position: { x: 60, y: 70 } })
+  await expect(page.getByText('再次点击生成会创建新任务，原任务可能已受理并产生费用，请先核查原任务。')).toBeVisible()
+  expect(db.calls).toBe(1)
+})
 
 test('排队任务刷新后保留，准备素材和保存阶段持续追踪且不重复提交', async ({ page }) => {
   const db = await databaseMock(page)

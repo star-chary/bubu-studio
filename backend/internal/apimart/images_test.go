@@ -72,7 +72,11 @@ func TestImageSubmitAndPollingUseDocumentedContracts(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := &Client{apiKey: "test-key", baseURL: server.URL, http: server.Client()}
+	client, err := NewClient("test-key", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.baseURL = server.URL
 	input := ImageRequest{Prompt: "boat", Model: "seedream-5-0-lite", Parameters: map[string]any{"size": "16:9", "resolution": "2K", "n": 1}, Images: []string{"https://private.example/ref"}}
 	id, err := client.CreateImage(context.Background(), input)
 	if err != nil || id != "task_123" {
@@ -99,8 +103,12 @@ func TestImageAmbiguousSubmissionDoesNotRetry(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(503) }))
 	defer server.Close()
-	client := &Client{apiKey: "test-key", baseURL: server.URL, http: server.Client()}
-	_, err := client.CreateImage(context.Background(), ImageRequest{Prompt: "boat", Model: "z-image-turbo"})
+	client, err := NewClient("test-key", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.baseURL = server.URL
+	_, err = client.CreateImage(context.Background(), ImageRequest{Prompt: "boat", Model: "z-image-turbo"})
 	failure, ok := err.(*ark.APIError)
 	if !ok || failure.Code != "SUBMISSION_UNKNOWN" || calls != 1 {
 		t.Fatal(err, calls)

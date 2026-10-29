@@ -269,6 +269,7 @@ onBeforeUnmount(() => {
     <p v-if="generation?.pollingError" class="generation-hint" role="status">{{ generation.pollingError }}</p>
     <button v-if="generation?.taskStatus === 'storage_failed'" class="retry-video-storage" type="button" @click="emit('retryStorage')">重试保存视频</button>
     <p v-if="generation?.error" class="generation-error" role="alert">{{ generation.error }}</p>
+    <p v-if="generation?.errorCode === 'SUBMISSION_UNKNOWN'" class="generation-hint" role="status">再次点击生成会创建新任务，原任务可能已受理并产生费用，请先核查原任务。</p>
     <p v-if="canGenerate && ((kind === 'image' && referenceError) || promptLength > 2000)" class="generation-hint">{{ promptLength > 2000 ? '提示词最多 2000 字' : referenceError }}</p>
     <p v-else-if="apimartImage && promptLength && !inputReady && persistenceEnabled && !mentionError" class="generation-hint">模型参数不完整或无效，请重新选择参数后生成</p>
     <p v-else-if="kind === 'image' && references.length && !hasMentions && (canGenerate || provider === 'apimart')" class="generation-hint">将使用以上 {{ references.length }} 张参考图片{{ provider === 'ark' ? `，生成${image.count === 1 ? '单张图片' : `${image.count} 张图片`}` : '' }}</p>

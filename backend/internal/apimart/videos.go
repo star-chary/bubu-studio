@@ -24,13 +24,15 @@ var taskIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var errorCodePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,80}$`)
 
 type Client struct {
-	apiKey  string
-	baseURL string
-	http    *http.Client
+	apiKey     string
+	baseURL    string
+	http       *http.Client
+	submitHTTP *http.Client
 }
 
 func NewClient(apiKey, proxyAddress string) (*Client, error) {
 	client := &http.Client{Timeout: 65 * time.Second}
+	submitTransport := http.DefaultTransport.(*http.Transport).Clone()
 	if proxyAddress != "" {
 		proxy, err := url.Parse(proxyAddress)
 		if err != nil || proxy.Scheme != "http" || proxy.User != nil || proxy.Path != "" || proxy.RawQuery != "" || proxy.ForceQuery || proxy.Fragment != "" {
@@ -45,8 +47,22 @@ func NewClient(apiKey, proxyAddress string) (*Client, error) {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = http.ProxyURL(proxy)
 		client.Transport = transport
+		submitTransport.Proxy = http.ProxyURL(proxy)
 	}
-	return &Client{apiKey: strings.TrimSpace(apiKey), baseURL: "https://api.apimart.ai/v1", http: client}, nil
+	// A create request is non-idempotent: never reuse connections, use HTTP/1.1
+	// only, and do not let redirects or a replayable body issue a second POST.
+	submitTransport.DisableKeepAlives = true
+	submitTransport.ForceAttemptHTTP2 = false
+	submitTransport.Protocols = new(http.Protocols)
+	submitTransport.Protocols.SetHTTP1(true)
+	submitClient := &http.Client{
+		Transport: submitTransport,
+		Timeout:   65 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	return &Client{apiKey: strings.TrimSpace(apiKey), baseURL: "https://api.apimart.ai/v1", http: client, submitHTTP: submitClient}, nil
 }
 
 type providerError struct {
@@ -97,13 +113,15 @@ func (c *Client) CreateVideo(ctx context.Context, in ark.VideoRequest) (string, 
 	if err != nil {
 		return "", &ark.APIError{Status: 503, Code: "MODEL_NOT_CONFIGURED", Message: "中转站接口配置无效。"}
 	}
+	req.GetBody = nil
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req, trace := traceSubmission(req)
 	// Submit once. A timeout or invalid success response cannot prove rejection.
 	unknown := &ark.APIError{Status: 502, Code: "SUBMISSION_UNKNOWN", Message: "无法确认中转站是否已受理视频，已保留任务记录，请核查后再试，未自动重新提交。"}
-	resp, err := c.http.Do(req)
+	resp, err := c.submitHTTP.Do(req)
 	if err != nil {
-		logFailure("create", in.TaskID, "", 0, providerError{})
+		trace.log("video", in.TaskID, 0, submissionErrorKind(err))
 		return "", unknown
 	}
 	defer resp.Body.Close()
@@ -115,12 +133,12 @@ func (c *Client) CreateVideo(ctx context.Context, in ark.VideoRequest) (string, 
 		} `json:"data"`
 	}
 	decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&wire)
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 && resp.StatusCode != 499 {
-		logFailure("create", in.TaskID, "", resp.StatusCode, wire.Error)
+	if explicitRejection(resp.StatusCode, decodeErr, wire.Error, len(wire.Data) > 0) {
+		trace.log("video", in.TaskID, resp.StatusCode, "provider_rejected")
 		return "", apiFailure(resp.StatusCode, wire.Error)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || decodeErr != nil || wire.Code != 200 || len(wire.Data) != 1 || !taskIDPattern.MatchString(wire.Data[0].TaskID) {
-		logFailure("create", in.TaskID, "", resp.StatusCode, wire.Error)
+		trace.log("video", in.TaskID, resp.StatusCode, "unexpected_response")
 		return "", unknown
 	}
 	return wire.Data[0].TaskID, nil
