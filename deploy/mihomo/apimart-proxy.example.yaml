@@ -1,0 +1,37 @@
+# 示例仅描述结构，正式线路地址与密钥必须保存在服务器受保护配置中。
+mixed-port: 18797
+allow-lan: false
+bind-address: 127.0.0.1
+mode: rule
+log-level: silent
+ipv6: false
+
+proxies:
+  - name: route-1
+    type: ss
+    server: first-route.example.com
+    port: 443
+    cipher: chacha20-ietf-poly1305
+    password: replace-with-protected-secret
+    udp: false
+  - name: route-2
+    type: ss
+    server: second-route.example.com
+    port: 443
+    cipher: chacha20-ietf-poly1305
+    password: replace-with-protected-secret
+    udp: false
+
+proxy-groups:
+  - name: apimart-fallback
+    type: fallback
+    proxies: [route-1, route-2]
+    url: https://api.apimart.ai/v1/models
+    expected-status: "401"
+    interval: 300
+    timeout: 5000
+    lazy: false
+
+rules:
+  - DOMAIN,api.apimart.ai,apimart-fallback
+  - MATCH,REJECT

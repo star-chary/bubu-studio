@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -27,8 +29,24 @@ type Client struct {
 	http    *http.Client
 }
 
-func NewClient(apiKey string) *Client {
-	return &Client{apiKey: strings.TrimSpace(apiKey), baseURL: "https://api.apimart.ai/v1", http: &http.Client{Timeout: 65 * time.Second}}
+func NewClient(apiKey, proxyAddress string) (*Client, error) {
+	client := &http.Client{Timeout: 65 * time.Second}
+	if proxyAddress != "" {
+		proxy, err := url.Parse(proxyAddress)
+		if err != nil || proxy.Scheme != "http" || proxy.User != nil || proxy.Path != "" || proxy.RawQuery != "" || proxy.ForceQuery || proxy.Fragment != "" {
+			return nil, fmt.Errorf("invalid APIMart proxy address")
+		}
+		host, port, err := net.SplitHostPort(proxy.Host)
+		ip := net.ParseIP(host)
+		portNumber, portErr := strconv.Atoi(port)
+		if err != nil || ip == nil || !ip.IsLoopback() || portErr != nil || portNumber < 1 || portNumber > 65535 {
+			return nil, fmt.Errorf("APIMart proxy must be a local HTTP endpoint")
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(proxy)
+		client.Transport = transport
+	}
+	return &Client{apiKey: strings.TrimSpace(apiKey), baseURL: "https://api.apimart.ai/v1", http: client}, nil
 }
 
 type providerError struct {

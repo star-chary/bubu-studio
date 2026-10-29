@@ -53,7 +53,7 @@ func TestVideoSubmissionAndResultUseAPIMartContract(t *testing.T) {
 				fmt.Fprint(w, `{"code":200,"data":[{"task_id":"task_test","status":"submitted"}]}`)
 			}))
 			defer srv.Close()
-			client := NewClient("test-secret")
+			client := newTestClient(t)
 			client.baseURL = srv.URL
 			in := validInput()
 			in.Mode = mode
@@ -82,7 +82,7 @@ func TestAmbiguousVideoSubmissionIsNeverRetried(t *testing.T) {
 				fmt.Fprint(w, `{"code":200,"data":[]}`)
 			}))
 			defer srv.Close()
-			client := NewClient("test-secret")
+			client := newTestClient(t)
 			client.baseURL = srv.URL
 			_, err := client.CreateVideo(context.Background(), validInput())
 			var failure *ark.APIError
@@ -109,7 +109,7 @@ func TestVideoStatesAndUnsafeResults(t *testing.T) {
 				fmt.Fprintf(w, `{"code":200,"data":{"id":"task_test","status":%q,"error":{"message":"private signed url https://secret.test/a?token=private"},"result":%s}}`, tc.status, result)
 			}))
 			defer srv.Close()
-			client := NewClient("test-secret")
+			client := newTestClient(t)
 			client.baseURL = srv.URL
 			out, err := client.QueryVideo(context.Background(), "task_test")
 			if tc.want == "" {
@@ -141,7 +141,7 @@ func TestUnsupportedVideoInputsDoNotReachProvider(t *testing.T) {
 	} {
 		in := validInput()
 		change(&in)
-		client := NewClient("test-secret")
+		client := newTestClient(t)
 		client.baseURL = "http://127.0.0.1:1"
 		_, err := client.CreateVideo(context.Background(), in)
 		var failure *ark.APIError
@@ -149,4 +149,13 @@ func TestUnsupportedVideoInputsDoNotReachProvider(t *testing.T) {
 			t.Fatal("invalid input reached transport", err)
 		}
 	}
+}
+
+func newTestClient(t *testing.T) *Client {
+	t.Helper()
+	client, err := NewClient("test-secret", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
 }

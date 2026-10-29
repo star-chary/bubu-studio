@@ -1,0 +1,23 @@
+[Unit]
+Description=Frame Space APIMart outbound proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=frame-apimart-proxy
+WorkingDirectory=/var/lib/frame-apimart-proxy
+LoadCredential=config.json:/etc/frame-space/apimart-proxy.json
+ExecStart=/opt/frame-space/bin/mihomo -d /var/lib/frame-apimart-proxy -f ${CREDENTIALS_DIRECTORY}/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -55,7 +55,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var db *persistence.Store
-	apimartClient := apimart.NewClient(os.Getenv("APIMART_API_KEY"))
+	apimartClient, err := apimart.NewClient(os.Getenv("APIMART_API_KEY"), os.Getenv("APIMART_PROXY_URL"))
+	if err != nil {
+		log.Fatal("APIMART_PROXY_URL 配置无效：必须是本机 HTTP 代理地址。")
+	}
 	generator := &generators{Client: ark.NewClient(os.Getenv("ARK_API_KEY")), apimartVideo: apimartClient, apimartImage: apimartClient}
 	workerDone := make(chan struct{})
 	if url := os.Getenv("DATABASE_URL"); url != "" {
