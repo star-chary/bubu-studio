@@ -15,7 +15,7 @@ import (
 
 func TestAPIMartUsesConfiguredLocalProxyForHTTPS(t *testing.T) {
 	var requests atomic.Int32
-	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-secret" {
 			http.Error(w, "missing authorization", http.StatusUnauthorized)
 			return
@@ -23,6 +23,9 @@ func TestAPIMartUsesConfiguredLocalProxyForHTTPS(t *testing.T) {
 		requests.Add(1)
 		switch r.URL.Path {
 		case "/images/generations", "/videos/generations":
+			if r.ProtoMajor != 1 {
+				t.Errorf("submission used HTTP/%d", r.ProtoMajor)
+			}
 			_, _ = fmt.Fprint(w, `{"code":200,"data":[{"task_id":"task_test"}]}`)
 		case "/tasks/task_test":
 			_, _ = fmt.Fprint(w, `{"code":200,"data":{"id":"task_test","status":"pending"}}`)
@@ -30,6 +33,8 @@ func TestAPIMartUsesConfiguredLocalProxyForHTTPS(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
+	origin.EnableHTTP2 = true
+	origin.StartTLS()
 	defer origin.Close()
 
 	var connects atomic.Int32
@@ -68,7 +73,8 @@ func TestAPIMartUsesConfiguredLocalProxyForHTTPS(t *testing.T) {
 	transport.TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	defer transport.CloseIdleConnections()
 	submitTransport := client.submitHTTP.Transport.(*http.Transport)
-	submitTransport.TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	// Trust the test certificate without replacing the production ALPN config.
+	submitTransport.TLSClientConfig.RootCAs = origin.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 	defer submitTransport.CloseIdleConnections()
 	client.baseURL = origin.URL
 	imageID, err := client.CreateImage(t.Context(), ImageRequest{Prompt: "paper boat", Model: "seedream-5-0-lite"})

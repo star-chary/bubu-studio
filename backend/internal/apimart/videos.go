@@ -3,6 +3,7 @@ package apimart
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,6 +56,12 @@ func NewClient(apiKey, proxyAddress string) (*Client, error) {
 	submitTransport.ForceAttemptHTTP2 = false
 	submitTransport.Protocols = new(http.Protocols)
 	submitTransport.Protocols.SetHTTP1(true)
+	// Clone() can inherit the default transport's ALPN list, including h2.
+	// Keep certificate verification intact while matching ALPN to HTTP/1.1.
+	if submitTransport.TLSClientConfig == nil {
+		submitTransport.TLSClientConfig = &tls.Config{}
+	}
+	submitTransport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	submitClient := &http.Client{
 		Transport: submitTransport,
 		Timeout:   65 * time.Second,

@@ -3,6 +3,7 @@ package apimart
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -215,7 +216,13 @@ func TestSubmissionUsesHTTP1WithoutConnectionReuse(t *testing.T) {
 	defer server.Close()
 	client := newTestClient(t)
 	client.baseURL = server.URL
-	client.submitHTTP.Transport.(*http.Transport).TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	// Preserve the real transport's negotiated protocols while trusting the
+	// test server. Replacing its whole TLS config would hide inherited ALPN.
+	transport := client.submitHTTP.Transport.(*http.Transport)
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.RootCAs = server.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
 	for _, prompt := range []string{"first", "second"} {
 		if err := submitForTest(t.Context(), client, "image", prompt); err != nil {
 			t.Fatal(err)
