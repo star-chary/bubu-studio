@@ -7,6 +7,7 @@ import (
 
 	"frame-space/backend/internal/identity"
 	"frame-space/backend/internal/persistence"
+	"frame-space/backend/internal/storage"
 )
 
 func TestAPIMartVideoTaskIsOwnedIdempotentAndReservesPoints(t *testing.T) {
@@ -49,6 +50,45 @@ func TestAPIMartVideoTaskIsOwnedIdempotentAndReservesPoints(t *testing.T) {
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 202)
 	body["taskId"] = identity.ID()
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 400)
+}
+
+func TestMotionControlHTTPQuoteAndSubmitWithoutDuration(t *testing.T) {
+	db := authDB(t)
+	h := NewRouter(nil, &creditTestStorage{}, db) // No worker or provider call.
+	owner := signIn(t, h, "motion-video@example.test", "motion-pass1")
+	canvasID, nodeID, imageID, videoID, taskID := identity.ID(), identity.ID(), identity.ID(), identity.ID(), identity.ID()
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/canvases", map[string]string{"id": canvasID}, nil), 201)
+	snapshot := persistence.Snapshot{Nodes: []persistence.Node{
+		{ID: nodeID, Data: persistence.NodeData{Kind: "video", Name: "motion", ModelSelection: &persistence.ModelSelection{Provider: "apimart", ModelID: "kling-v2-6-motion-control", Parameters: map[string]any{}}}},
+		{ID: imageID, Data: persistence.NodeData{Kind: "image", Name: "person", Origin: "upload"}},
+		{ID: videoID, Data: persistence.NodeData{Kind: "video", Name: "motion", Origin: "upload"}},
+	}, Viewport: persistence.Viewport{Zoom: 1}}
+	assertStatus(t, authRequest(h, owner, http.MethodPut, "/api/canvases/"+canvasID, map[string]any{"version": 0, "snapshot": snapshot}, nil), 200)
+	for _, asset := range []storage.Asset{
+		{Key: "person", Kind: storage.Image, ContentType: "image/png", Bytes: 1000, Scope: storage.Scope{CanvasID: canvasID, NodeID: imageID}, Media: &storage.MediaMetadata{Width: 960, Height: 540}},
+		{Key: "motion", Kind: storage.Video, ContentType: "video/mp4", Bytes: 1000, Scope: storage.Scope{CanvasID: canvasID, NodeID: videoID}, Media: &storage.MediaMetadata{Width: 854, Height: 480, VideoCodec: "h264", FrameRate: 24, DurationSeconds: 20}},
+	} {
+		if err := db.RecordAsset(t.Context(), asset); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := map[string]any{
+		"taskId": taskID, "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart",
+		"model": "kling-v2-6-motion-control", "mode": "reference", "prompt": "跟随动作",
+		"parameters": map[string]any{"mode": "std"},
+		"references": []persistence.Reference{{NodeID: imageID, AssetKey: "person", Kind: "image"}, {NodeID: videoID, AssetKey: "motion", Kind: "video"}},
+	}
+	quote := quoteAPIMart(t, h, owner, "video", body)
+	if quote.Points != 198 {
+		t.Fatalf("20-second motion quote = %d, want 198", quote.Points)
+	}
+	body["acceptedPoints"], body["priceVersion"] = quote.Points, quote.PriceVersion
+	w := authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil)
+	assertStatus(t, w, 202)
+	var task persistence.Task
+	if json.Unmarshal(w.Body.Bytes(), &task) != nil || task.Input.Duration != 0 || task.Input.Resolution != "std" || task.CreditStatus != "reserved" || task.CreditPoints != 198 {
+		t.Fatalf("unexpected motion task: %s", w.Body.String())
+	}
 }
 
 func TestAPIMartUnpricedVideoAndAutomaticDurationAreRejected(t *testing.T) {

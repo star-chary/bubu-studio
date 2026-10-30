@@ -198,7 +198,49 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 			resolution, _ = input.Parameters["resolution"].(string)
 		}
 		audio := input.GenerateAudio != nil && *input.GenerateAudio
-		points, ok := apimart.FixedCredits(kind, input.Model, resolution, input.Duration, audio, len(bindings))
+		definition, _ := apimart.VideoDefinition(input.Model)
+		imageCount := 0
+		videoSeconds := 0.0
+		for _, ref := range bindings {
+			switch ref.Kind {
+			case "image":
+				imageCount++
+				if definition.MotionControl {
+					var asset storage.Asset
+					if err := s.Pool.QueryRow(ctx, `SELECT metadata FROM assets WHERE key=$1 AND canvas_id=$2`, ref.AssetKey, input.CanvasID).Scan(&asset); err != nil {
+						return CreditQuote{}, mapError(err)
+					}
+					if !storage.CheckAPIMartVideoReference(asset, input.Model).Eligible {
+						return CreditQuote{}, ErrInvalid
+					}
+				}
+			case "video":
+				var asset storage.Asset
+				if err := s.Pool.QueryRow(ctx, `SELECT metadata FROM assets WHERE key=$1 AND canvas_id=$2`, ref.AssetKey, input.CanvasID).Scan(&asset); err != nil {
+					return CreditQuote{}, mapError(err)
+				}
+				if !storage.CheckAPIMartVideoReference(asset, input.Model).Eligible {
+					return CreditQuote{}, ErrInvalid
+				}
+				videoSeconds += asset.Media.DurationSeconds
+			default:
+				return CreditQuote{}, ErrInvalid
+			}
+		}
+		var points int64
+		var ok bool
+		if videoSeconds > 0 {
+			if videoSeconds > definition.MaxReferenceVideoSeconds || math.IsNaN(videoSeconds) || math.IsInf(videoSeconds, 0) {
+				return CreditQuote{}, ErrInvalid
+			}
+			if definition.MotionControl {
+				points, ok = apimart.FixedCredits(kind, input.Model, resolution, int(math.Ceil(videoSeconds)), false, imageCount)
+			} else {
+				points, ok = apimart.FixedVideoReferenceCredits(input.Model, resolution, input.Duration, int(math.Ceil(videoSeconds)))
+			}
+		} else {
+			points, ok = apimart.FixedCredits(kind, input.Model, resolution, input.Duration, audio, imageCount)
+		}
 		if !ok {
 			return CreditQuote{}, ErrInvalid
 		}

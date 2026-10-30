@@ -69,6 +69,22 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 				return
 			}
 			limits := storage.VideoReferenceLimits{MaxImages: spec.MaxImages, MaxVideos: spec.MaxVideos, MaxAudios: spec.MaxAudios, MaxMediaSeconds: spec.MaxReferenceSeconds, AllowAudioOnly: t.Input.Model == ark.VideoModel}
+			if t.Input.Provider == ProviderAPIMart && spec.MaxVideos > 0 {
+				limits.APIMartModel = t.Input.Model
+				limits.ExpectedVideoSeconds = make(map[string]float64)
+				for _, ref := range t.Bindings {
+					if ref.Kind != "video" {
+						continue
+					}
+					var asset storage.Asset
+					err := s.Pool.QueryRow(ctx, `SELECT metadata FROM assets WHERE key=$1 AND canvas_id=$2`, ref.AssetKey, t.Input.CanvasID).Scan(&asset)
+					if err != nil || asset.Media == nil {
+						s.finish(ctx, t.ID, "failed", nil, &ark.APIError{Code: "INVALID_VIDEO_REFERENCE", Message: "参考视频信息不可用，请重新上传并报价。"})
+						return
+					}
+					limits.ExpectedVideoSeconds[ref.AssetKey] = asset.Media.DurationSeconds
+				}
+			}
 			preflight, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			urls, err = objects.VideoReferenceURLsWithLimits(preflight, scope, keys, limits)
 			cancel()

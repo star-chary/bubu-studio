@@ -1,6 +1,8 @@
 # APIMart 固定积分报价
 
-2026-10-28：图片和视频的 APIMart 新任务接入平台积分，已随 `20261028T062150Z` 发布。当前版本为 `apimart-2026-10-28-v1`，报价以发布时的价格表快照为准；本次未用真实付费请求核对上游账单。
+2026-10-29 本地更新：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。本次改动尚未发布线上，具体规则见 [参考视频接入](./apimart-video-reference.md)。以下发布记录保留 2026-10-28 当时状态。
+
+2026-10-28：图片和视频的 APIMart 新任务接入平台积分，已随 `20261028T062150Z` 发布。当时价格版本为 `apimart-2026-10-28-v1`，报价以发布时的价格表快照为准；该发布未用真实付费请求核对上游账单。
 
 ## 价格与显示范围
 
@@ -16,7 +18,7 @@
 
 当前开放 6 个图片模型：Seedream 5.0 Lite / Pro、FLUX 3 Image / Klein、Qwen Image 3.0 Pro、Z Image Turbo。Seedream Pro 的第一张参考图免费，之后按张计；Qwen Pro 的参考图按张计。其余开放图片模型按所选清晰度的单张价格核算。图片多张生成按独立单图任务提交，页面显示单张积分乘张数的总额；中途余额或报价变化时，可能只提交成功一部分，并停止后续提交。
 
-当前开放 20 个视频模型：Seedance 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价。本项目当前只支持 APIMart 图片参考，尚未开放参考视频／音频，因此没有计算这些输入的价格。
+当前本地开放 23 个视频模型：Seedance 2.5 / 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni / 2.6 Motion Control / 3.0 Motion Control、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。普通视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Seedance 视频参考和 Kling 动作控制按[参考视频接入](./apimart-video-reference.md)计价。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价；APIMart 参考音频仍未开放。
 
 报价例子（黄金价快照和上述换算假设）：
 
@@ -27,11 +29,13 @@
 | FLUX 3 Image Klein，2K／4K，各 1 张 | 2／6 |
 | Qwen Image 3.0 Pro，1K，0／3 张参考图 | 6／8 |
 | Seedance 2.0，720p，5 秒，无参考视频 | 124 |
+| Seedance 2.5，480p，20 秒参考视频 + 20 秒输出 | 400 |
+| Kling 2.6 / 3.0 Motion Control，720p，20 秒参考视频 | 198／356 |
 | PixVerse V6，720p，5 秒，无声／有声 | 28／36 |
 
 分辨率不一定导致价格变化：例如 Seedream 5.0 Lite 的 2K、3K、4K 在本次价格快照中同价。参考素材是每个独立任务的输入，多张图片会重复计入每张任务的参考素材费用。
 
-暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Seedance 2.5 和 Gemini Omni 1.1 Flash 隐藏：前者上游按实际 Token 结算，[每秒单价只是预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，后者当前接入没有明确时长。原本未接入的三个视频专用工作流仍隐藏。旧画布参数和旧任务保留，但这些模型不能创建新任务或获取新报价。
+暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 本次按用户选择开放 480p，固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；未定价的 720p / 1080p 新任务被后端拒绝，历史任务的执行参数保持兼容。
 
 ## 业务与数据流
 
@@ -49,7 +53,7 @@
 
 数据模型复用现有 `credit_accounts`、`credit_ledger`、`generation_tasks` 和 `assets`，没有新增表或数据库迁移。事务将账户余额、任务和流水绑定，唯一任务 ID 与流水幂等键防止重复扣费。价格表独立于供应商能力契约，避免隐藏模型时破坏历史任务恢复。图片和视频生成接口均不提供不经积分核价的新 APIMart 任务入口。
 
-## 验证边界
+## 2026-10-28 发布验证边界
 
 使用模拟供应商和独立 `frame_space_test` 数据库验证报价、冻结、成功结算、明确失败退回、不确定结果保留冻结、任务幂等及供应商／节点不匹配拒绝；后端 Go 全包测试、`go vet ./...` 和构建通过。浏览器测试使用模拟接口验证报价显示、批量张数、余额不足与模型隐藏，完整回归 163/163 通过，前端构建通过。未发起真实 APIMart 生成或真实 OSS 转存，不能据此确认账户价格、真实供应商账单或每个型号的线上可用性。
 

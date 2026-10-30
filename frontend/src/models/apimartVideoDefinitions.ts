@@ -11,6 +11,9 @@ export interface APIMartVideoDefinition {
   generationEnabled: boolean
   modes: VideoMode[]
   maxReferenceImages: number | null
+  maxReferenceVideos?: number
+  maxReferenceVideoSeconds?: number
+  motionControl?: boolean
   parameters: CatalogParameter[]
   imageParameters?: Record<string, unknown>
 }

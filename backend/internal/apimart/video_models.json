@@ -11,6 +11,9 @@
       "image"
     ],
     "maxReferenceImages": 30,
+    "maxReferenceVideos": 10,
+    "maxReferenceVideoSeconds": 30,
+    "videoReferenceTag": "@视频{n}",
     "imageInput": "image_with_roles",
     "referenceInput": "image_urls",
     "referenceTag": "@图片{n}",
@@ -47,7 +50,7 @@
           "720p",
           "1080p"
         ],
-        "default": "720p",
+        "default": "480p",
         "required": false
       },
       {
@@ -99,6 +102,9 @@
       "image"
     ],
     "maxReferenceImages": 9,
+    "maxReferenceVideos": 3,
+    "maxReferenceVideoSeconds": 15,
+    "videoReferenceTag": "@视频{n}",
     "imageInput": "image_with_roles",
     "referenceInput": "image_with_roles",
     "referenceTag": "@图片{n}",
@@ -176,6 +182,9 @@
       "image"
     ],
     "maxReferenceImages": 9,
+    "maxReferenceVideos": 3,
+    "maxReferenceVideoSeconds": 15,
+    "videoReferenceTag": "@视频{n}",
     "imageInput": "image_with_roles",
     "referenceInput": "image_with_roles",
     "referenceTag": "@图片{n}",
@@ -525,16 +534,41 @@
     ]
   },
   {
+    "modelId": "kling-v2-6-motion-control",
+    "name": "Kling 2.6 Motion Control",
+    "group": "specialized",
+    "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v2-6/kling-v2-6-motion-control-generation",
+    "generationEnabled": true,
+    "modes": ["reference"],
+    "motionControl": true,
+    "maxReferenceImages": 1,
+    "maxReferenceVideos": 1,
+    "maxReferenceVideoSeconds": 30,
+    "videoReferenceTag": "参考视频",
+    "referenceTag": "参考图片",
+    "referenceExtra": { "character_orientation": "video", "keep_original_sound": "yes" },
+    "parameters": [
+      {
+        "key": "mode", "label": "清晰度", "role": "resolution", "kind": "enum",
+        "enum": ["std", "pro"], "default": "std",
+        "optionLabels": { "std": "720P", "pro": "1080P" }, "required": false
+      }
+    ]
+  },
+  {
     "modelId": "kling-v3-motion-control",
     "name": "Kling 3.0 Motion Control",
     "group": "specialized",
     "document": "https://docs.apimart.ai/en/api-reference/videos/kling-v2-6/kling-v2-6-motion-control-generation",
-    "generationEnabled": false,
-    "modes": [],
-    "maxReferenceImages": 0,
-    "imageInput": "first_frame_image",
-    "referenceInput": "image_urls",
-    "referenceTag": "image {n}",
+    "generationEnabled": true,
+    "modes": ["reference"],
+    "motionControl": true,
+    "maxReferenceImages": 1,
+    "maxReferenceVideos": 1,
+    "maxReferenceVideoSeconds": 30,
+    "videoReferenceTag": "参考视频",
+    "referenceTag": "参考图片",
+    "referenceExtra": { "character_orientation": "video", "keep_original_sound": "yes" },
     "omitImageRatio": true,
     "parameters": [
       {
@@ -548,14 +582,12 @@
         ],
         "default": "std",
         "optionLabels": {
-          "std": "标准",
-          "pro": "高品质",
-          "4k": "4K"
+          "std": "720P",
+          "pro": "1080P"
         },
         "required": false
       }
-    ],
-    "excludedReason": "需要动作视频与人物图片的动作控制工作流"
+    ]
   },
   {
     "modelId": "wan3.0-video",

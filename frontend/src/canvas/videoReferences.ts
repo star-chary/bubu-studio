@@ -1,6 +1,7 @@
 import { mediaKindLabel, type MediaKind, type MediaNodeData } from './media'
 import { VIDEO_MODEL, videoModelDefinition, type VideoMode, type VideoModelId } from '../models/videoModels'
 import { referenceCapability, type CatalogModel } from '../models/modelCatalog'
+import { apimartVideoDefinition } from '../models/apimartVideoDefinitions'
 
 export const videoReferenceLimits: Record<MediaKind, number> = videoModelDefinition(VIDEO_MODEL).maxReferences
 
@@ -51,13 +52,14 @@ export function videoReferencesError(sources: { id: string; data: MediaNodeData 
   return ''
 }
 
-// apimartReferencesError 只采用目录模型明确提供的参考能力：
-// 没有提供条数时不施加数量上限，也不套用 Ark 的时长与组合规则。
-export function apimartReferencesError(sources: { id: string; data: MediaNodeData }[], canvasId: string, model?: CatalogModel, mode: VideoMode = 'reference'): string {
-  if (!sources.length) return model?.generationEnabled ? mode === 'image' ? '请选择一张起始图片' : '全能参考需至少添加 1 张参考图片' : ''
+// Shared media checks plus the selected provider model's limits.
+export function apimartReferencesError(sources: { id: string; data: MediaNodeData }[], canvasId: string, model?: CatalogModel, mode: VideoMode = 'reference', individual = false): string {
+  const definition = apimartVideoDefinition(model?.modelId)
+  if (!sources.length) return model?.generationEnabled ? definition?.motionControl ? '动作控制需要 1 张人物参考图和 1 段参考视频' : mode === 'image' ? '请选择一张起始图片' : '全能参考需至少添加 1 项参考素材' : ''
   if (mode === 'image' && (sources.length !== 1 || sources[0]?.data.kind !== 'image')) return '图生视频需要一张起始图片'
   const name = model?.name?.trim() || model?.modelId || '该模型'
   const counts: Record<MediaKind, number> = { image: 0, video: 0, audio: 0 }
+  let videoSeconds = 0
   const keys = new Set<string>()
   for (const source of sources) {
     const kind = source.data.kind
@@ -70,7 +72,32 @@ export function apimartReferencesError(sources: { id: string; data: MediaNodeDat
     const asset = source.data.asset!
     if (keys.has(asset.key)) return `${label}：同一素材不能重复引用`
     keys.add(asset.key)
+    if (kind === 'image' && definition?.motionControl) {
+      const error = videoReferenceError(source.data, canvasId, source.id)
+      if (error) return `${label}：${error}`
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(asset.contentType)) return `${label}：动作控制的参考图片请使用 JPEG、PNG 或 WebP`
+      if (asset.bytes > 10_000_000) return `${label}：动作控制的参考图片不能超过 10 MB`
+    }
+    if (kind === 'video') {
+      const error = videoReferenceError(source.data, canvasId, source.id)
+      if (error) return `${label}：${error}`
+      const media = asset.media!
+      const seconds = media.durationSeconds
+      if (definition?.motionControl && asset.bytes > 100_000_000) return `${label}：动作参考视频不能超过 100 MB`
+      if (model?.modelId === 'seedance-2.0' || model?.modelId === 'seedance-2.0-fast') {
+        const shortSide = Math.min(media.width ?? 0, media.height ?? 0)
+        if (shortSide < 480 || shortSide > 720) return `${label}：参考视频短边须为 480～720 像素`
+      } else if (model?.modelId === 'seedance-2.5') {
+        if ((media.width ?? 0) * (media.height ?? 0) < 409600) return `${label}：参考视频总像素须至少为 409600`
+        if (media.audioCodec && !['aac', 'mp3'].includes(media.audioCodec)) return `${label}：参考视频音轨须为 AAC 或 MP3`
+      }
+      const minimum = definition?.motionControl ? 3 : 2
+      if (seconds === undefined || !Number.isFinite(seconds) || seconds < minimum) return `${label}：参考视频须至少 ${minimum} 秒`
+      videoSeconds += seconds
+      if (videoSeconds > (definition?.maxReferenceVideoSeconds ?? 0)) return `参考视频总时长不能超过 ${definition?.maxReferenceVideoSeconds ?? 0} 秒`
+    }
   }
+  if (!individual && definition?.motionControl && (counts.image !== 1 || counts.video !== 1)) return '动作控制需要 1 张人物参考图和 1 段参考视频'
   return ''
 }
 

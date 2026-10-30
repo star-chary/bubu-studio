@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,9 +19,11 @@ type VideoReferenceLimits struct {
 	MaxImages, MaxVideos, MaxAudios int
 	MaxMediaSeconds                 float64
 	AllowAudioOnly                  bool
+	APIMartModel                    string
+	ExpectedVideoSeconds            map[string]float64
 }
 
-var defaultVideoReferenceLimits = VideoReferenceLimits{30, 10, 10, 30, true}
+var defaultVideoReferenceLimits = VideoReferenceLimits{MaxImages: 30, MaxVideos: 10, MaxAudios: 10, MaxMediaSeconds: 30, AllowAudioOnly: true}
 
 // Re-read and probe the actual object before signing. Database/browser metadata
 // alone cannot prove that a reference is still readable or media is valid.
@@ -58,6 +61,15 @@ func (s *Store) VideoReferenceURLsWithLimits(ctx context.Context, scope Scope, k
 			return nil, err
 		}
 		check := CheckVideoReference(asset)
+		if limits.APIMartModel != "" {
+			check = CheckAPIMartVideoReference(asset, limits.APIMartModel)
+		}
+		if limits.APIMartModel != "" && media.kind == Video {
+			expected, ok := limits.ExpectedVideoSeconds[key]
+			if !ok || asset.Media == nil || math.IsNaN(expected) || math.IsInf(expected, 0) || math.Abs(expected-asset.Media.DurationSeconds) > 0.001 {
+				return nil, &Error{422, "REFERENCE_CHANGED", "参考视频与报价时的素材信息不一致，请重新上传并报价。"}
+			}
+		}
 		if !check.Eligible {
 			return nil, &Error{422, "INVALID_VIDEO_REFERENCE", check.Reason}
 		}

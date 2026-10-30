@@ -136,7 +136,7 @@ func TestUnsupportedVideoInputsDoNotReachProvider(t *testing.T) {
 		func(in *ark.VideoRequest) { in.Mode = "reference" },
 		func(in *ark.VideoRequest) {
 			in.Mode = "reference"
-			in.References = []ark.VideoReference{{Kind: "video", URL: "https://assets.example.test/ref.mp4"}}
+			in.References = []ark.VideoReference{{Kind: "audio", URL: "https://assets.example.test/ref.wav"}}
 		},
 	} {
 		in := validInput()

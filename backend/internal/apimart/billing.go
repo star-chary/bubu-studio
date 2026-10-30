@@ -14,10 +14,11 @@ import (
 var billingJSON []byte
 
 type billingRate struct {
-	Rates          map[string]int64 `json:"rates"`
-	AudioRates     map[string]int64 `json:"audioRates"`
-	FreeReferences int              `json:"freeReferences"`
-	ReferenceRate  int64            `json:"referenceRate"`
+	Rates           map[string]int64 `json:"rates"`
+	AudioRates      map[string]int64 `json:"audioRates"`
+	VideoInputRates map[string]int64 `json:"videoInputRates"`
+	FreeReferences  int              `json:"freeReferences"`
+	ReferenceRate   int64            `json:"referenceRate"`
 }
 
 var billing = func() struct {
@@ -81,6 +82,25 @@ func FixedCredits(kind, model, resolution string, duration int, audio bool, refe
 	}
 	cost += int64(max(0, references-entry.FreeReferences)) * entry.ReferenceRate
 	const denominator int64 = 100000000
+	points := 2 * ((cost*864 + denominator - 1) / denominator)
+	return points, points > 0 && points <= 1000000
+}
+
+// FixedVideoReferenceCredits prices Seedance video-input tiers per second of
+// output plus input. inputSeconds must be the conservative ceiling of the
+// server-measured total reference duration, not a client-supplied value.
+func FixedVideoReferenceCredits(model, resolution string, duration, inputSeconds int) (int64, bool) {
+	entry, ok := billing.Videos[model]
+	definition, defined := VideoDefinition(model)
+	if !ok || !defined || duration <= 0 || duration > 30 || inputSeconds <= 0 || float64(inputSeconds) > definition.MaxReferenceVideoSeconds {
+		return 0, false
+	}
+	rate := entry.VideoInputRates[strings.ToUpper(resolution)]
+	if rate <= 0 {
+		return 0, false
+	}
+	const denominator int64 = 100000000
+	cost := rate * int64(duration+inputSeconds)
 	points := 2 * ((cost*864 + denominator - 1) / denominator)
 	return points, points > 0 && points <= 1000000
 }

@@ -39,21 +39,25 @@ type VideoParameter struct {
 }
 
 type VideoModelDefinition struct {
-	ModelID            string           `json:"modelId"`
-	GenerationEnabled  bool             `json:"generationEnabled"`
-	Modes              []string         `json:"modes"`
-	MaxReferenceImages *int             `json:"maxReferenceImages"`
-	ImageInput         string           `json:"imageInput"`
-	ReferenceInput     string           `json:"referenceInput"`
-	ReferenceRole      string           `json:"referenceRole"`
-	ReferenceTag       string           `json:"referenceTag"`
-	OmitImageRatio     bool             `json:"omitImageRatio"`
-	OmitParameters     []string         `json:"omitParameters"`
-	ImageParameters    map[string]any   `json:"imageParameters"`
-	TextExtra          map[string]any   `json:"textExtra"`
-	ReferenceExtra     map[string]any   `json:"referenceExtra"`
-	ImageExtra         map[string]any   `json:"imageExtra"`
-	Parameters         []VideoParameter `json:"parameters"`
+	ModelID                  string           `json:"modelId"`
+	GenerationEnabled        bool             `json:"generationEnabled"`
+	Modes                    []string         `json:"modes"`
+	MaxReferenceImages       *int             `json:"maxReferenceImages"`
+	MaxReferenceVideos       int              `json:"maxReferenceVideos"`
+	MaxReferenceVideoSeconds float64          `json:"maxReferenceVideoSeconds"`
+	MotionControl            bool             `json:"motionControl"`
+	VideoReferenceTag        string           `json:"videoReferenceTag"`
+	ImageInput               string           `json:"imageInput"`
+	ReferenceInput           string           `json:"referenceInput"`
+	ReferenceRole            string           `json:"referenceRole"`
+	ReferenceTag             string           `json:"referenceTag"`
+	OmitImageRatio           bool             `json:"omitImageRatio"`
+	OmitParameters           []string         `json:"omitParameters"`
+	ImageParameters          map[string]any   `json:"imageParameters"`
+	TextExtra                map[string]any   `json:"textExtra"`
+	ReferenceExtra           map[string]any   `json:"referenceExtra"`
+	ImageExtra               map[string]any   `json:"imageExtra"`
+	Parameters               []VideoParameter `json:"parameters"`
 }
 
 var videoModels = func() map[string]VideoModelDefinition {
@@ -90,10 +94,16 @@ func (m VideoModelDefinition) ReferenceLimit(mode string) int {
 
 func ReferenceLabel(model, kind string, index int) string {
 	m, ok := VideoDefinition(model)
-	if !ok || kind != "image" {
+	if !ok {
 		return ""
 	}
-	return strings.ReplaceAll(m.ReferenceTag, "{n}", fmt.Sprint(index))
+	tag := m.ReferenceTag
+	if kind == "video" {
+		tag = m.VideoReferenceTag
+	} else if kind != "image" {
+		return ""
+	}
+	return strings.ReplaceAll(tag, "{n}", fmt.Sprint(index))
 }
 
 func sameValue(a, b any) bool {
@@ -216,15 +226,26 @@ func videoPayload(in ark.VideoRequest) (map[string]any, bool) {
 	}
 	m, _ := VideoDefinition(in.Model)
 	limit := m.ReferenceLimit(in.Mode)
-	if (in.Mode == "text" && len(in.References) != 0) || (in.Mode != "text" && (len(in.References) == 0 || len(in.References) > limit)) {
+	if (in.Mode == "text" && len(in.References) != 0) || (in.Mode != "text" && (len(in.References) == 0 || len(in.References) > limit+m.MaxReferenceVideos)) {
 		return nil, false
 	}
 	images := make([]string, 0, len(in.References))
+	videos := make([]string, 0, len(in.References))
 	for _, r := range in.References {
-		if r.Kind != "image" || !validResultURL(r.URL) {
+		if !validResultURL(r.URL) {
 			return nil, false
 		}
-		images = append(images, r.URL)
+		switch r.Kind {
+		case "image":
+			images = append(images, r.URL)
+		case "video":
+			videos = append(videos, r.URL)
+		default:
+			return nil, false
+		}
+	}
+	if len(images) > limit || len(videos) > m.MaxReferenceVideos || (len(videos) > 0 && in.Mode != "reference") {
+		return nil, false
 	}
 	out := map[string]any{"model": in.Model, "prompt": in.Prompt}
 	for _, p := range m.Parameters {
@@ -233,6 +254,16 @@ func videoPayload(in ark.VideoRequest) (map[string]any, bool) {
 		}
 		out[p.Key] = in.Parameters[p.Key]
 	}
+	if m.MotionControl {
+		if in.Mode != "reference" || len(images) != 1 || len(videos) != 1 {
+			return nil, false
+		}
+		out["image_url"], out["video_url"] = images[0], videos[0]
+		for key, value := range m.ReferenceExtra {
+			out[key] = value
+		}
+		return out, true
+	}
 	extra := m.TextExtra
 	if in.Mode != "text" {
 		field, role := m.ReferenceInput, m.ReferenceRole
@@ -240,27 +271,32 @@ func videoPayload(in ark.VideoRequest) (map[string]any, bool) {
 		if in.Mode == "image" {
 			field, role, extra = m.ImageInput, "first_frame", m.ImageExtra
 		}
-		switch field {
-		case "first_frame_image":
-			out[field] = images[0]
-		case "image_with_roles":
-			items := make([]map[string]string, 0, len(images))
-			for _, u := range images {
-				items = append(items, map[string]string{"url": u, "role": role})
-			}
-			out[field] = items
-		case "ref_images":
-			items := make([]map[string]any, 0, len(images))
-			for i, u := range images {
-				tag := ReferenceLabel(in.Model, "image", i+1)
-				items = append(items, map[string]any{"tag": tag, "type": "image", "image_urls": []string{u}})
-				if !strings.Contains(in.Prompt, tag) {
-					out["prompt"] = out["prompt"].(string) + " " + tag
+		if len(videos) > 0 {
+			out["video_urls"] = videos
+		}
+		if len(images) > 0 {
+			switch field {
+			case "first_frame_image":
+				out[field] = images[0]
+			case "image_with_roles":
+				items := make([]map[string]string, 0, len(images))
+				for _, u := range images {
+					items = append(items, map[string]string{"url": u, "role": role})
 				}
+				out[field] = items
+			case "ref_images":
+				items := make([]map[string]any, 0, len(images))
+				for i, u := range images {
+					tag := ReferenceLabel(in.Model, "image", i+1)
+					items = append(items, map[string]any{"tag": tag, "type": "image", "image_urls": []string{u}})
+					if !strings.Contains(in.Prompt, tag) {
+						out["prompt"] = out["prompt"].(string) + " " + tag
+					}
+				}
+				out[field] = items
+			default:
+				out[field] = images
 			}
-			out[field] = items
-		default:
-			out[field] = images
 		}
 	}
 	for key, value := range extra {

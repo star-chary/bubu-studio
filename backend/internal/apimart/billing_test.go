@@ -26,6 +26,9 @@ func TestFixedCreditsPricingExamples(t *testing.T) {
 		{"video", "MiniMax-H3", "768P", 5, false, 5, 50},
 		{"video", "MiniMax-H3", "768P", 5, false, 6, 54},
 		{"video", "wan3.0-video", "720P", 5, false, 0, 58},
+		{"video", "seedance-2.5", "480p", 20, false, 0, 334},
+		{"video", "kling-v2-6-motion-control", "std", 20, false, 1, 198},
+		{"video", "kling-v3-motion-control", "std", 20, false, 1, 356},
 	} {
 		t.Run(fmt.Sprintf("%s/%s/%s/%d/%t/%d", tc.kind, tc.model, tc.resolution, tc.duration, tc.audio, tc.references), func(t *testing.T) {
 			points, ok := FixedCredits(tc.kind, tc.model, tc.resolution, tc.duration, tc.audio, tc.references)
@@ -83,6 +86,10 @@ func TestBillingTableCoversExecutionResolutions(t *testing.T) {
 			if field.Role == "resolution" {
 				foundResolution = true
 				for _, raw := range field.Enum {
+					// Higher Seedance 2.5 resolutions remain in the adapter only for old tasks.
+					if id == "seedance-2.5" && raw != "480p" {
+						continue
+					}
 					for _, audio := range []bool{false, true} {
 						if _, ok := FixedCredits("video", id, raw.(string), 5, audio, 0); !ok {
 							t.Errorf("video %s %v audio=%t is not priced", id, raw, audio)
@@ -91,7 +98,7 @@ func TestBillingTableCoversExecutionResolutions(t *testing.T) {
 				}
 			}
 		}
-		if !foundResolution || !foundDuration {
+		if !foundResolution || (!foundDuration && !definition.MotionControl) {
 			t.Errorf("video %s cannot quote explicit resolution and duration", id)
 		}
 	}
@@ -117,9 +124,49 @@ func TestBillableModelDefaultsCanBeNormalizedAndQuoted(t *testing.T) {
 				t.Errorf("video %s/%s rejects its default input", id, mode)
 				continue
 			}
-			if _, ok := FixedCredits("video", id, r.Resolution, r.Duration, r.GenerateAudio, 0); !ok {
+			duration := r.Duration
+			if definition.MotionControl {
+				duration = 20 // Motion-control output duration follows the reference video.
+			}
+			if _, ok := FixedCredits("video", id, r.Resolution, duration, r.GenerateAudio, 0); !ok {
 				t.Errorf("video %s/%s default cannot be quoted: %+v", id, mode, r)
 			}
+		}
+	}
+}
+
+func TestSeedanceVideoReferenceCredits(t *testing.T) {
+	cases := []struct {
+		model, resolution string
+		seconds, want     int
+	}{
+		{"seedance-2.0", "480p", 3, 56},
+		{"seedance-2.0", "720p", 3, 120},
+		{"seedance-2.0", "1080p", 3, 300},
+		{"seedance-2.0", "4k", 3, 616},
+		{"seedance-2.0-fast", "480p", 3, 34},
+		{"seedance-2.0-fast", "720p", 3, 72},
+	}
+	for _, tc := range cases {
+		got, ok := FixedVideoReferenceCredits(tc.model, tc.resolution, 5, tc.seconds)
+		if !ok || got != int64(tc.want) {
+			t.Errorf("%s %s: %d, %v, want %d", tc.model, tc.resolution, got, ok, tc.want)
+		}
+	}
+	if got, ok := FixedVideoReferenceCredits("seedance-2.5", "480p", 20, 20); !ok || got != 400 {
+		t.Fatalf("20s reference and 20s output: %d, %v", got, ok)
+	}
+	for _, tc := range []struct {
+		model, resolution string
+		duration, input   int
+	}{
+		{"wan3.0-video", "720p", 5, 2}, {"seedance-2.0-fast", "1080p", 5, 2},
+		{"seedance-2.0", "720p", 5, 0}, {"seedance-2.0", "720p", 5, 16},
+		{"seedance-2.0", "720p", 0, 2},
+		{"seedance-2.5", "720p", 20, 20}, {"seedance-2.5", "480p", 20, 31},
+	} {
+		if _, ok := FixedVideoReferenceCredits(tc.model, tc.resolution, tc.duration, tc.input); ok {
+			t.Errorf("accepted unpriced request: %+v", tc)
 		}
 	}
 }

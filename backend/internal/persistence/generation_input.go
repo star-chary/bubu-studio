@@ -100,6 +100,9 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 		if counts["image"] > spec.MaxImages || counts["video"] > spec.MaxVideos || counts["audio"] > spec.MaxAudios || (input.Model != ark.VideoModel && counts["image"]+counts["video"] == 0 && input.Mode == "reference") {
 			return nil, ErrInvalid
 		}
+		if model, ok := apimart.VideoDefinition(input.Model); input.Provider == ProviderAPIMart && ok && model.MotionControl && (counts["image"] != 1 || counts["video"] != 1) {
+			return nil, ErrInvalid
+		}
 	}
 	return refs, nil
 }
@@ -107,7 +110,11 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 func videoSpec(in Input) (ark.VideoModelSpec, bool) {
 	if in.Provider == ProviderAPIMart {
 		m, ok := apimart.VideoDefinition(in.Model)
-		return ark.VideoModelSpec{MaxDuration: 30, MaxImages: m.ReferenceLimit(in.Mode), MaxReferenceSeconds: 30}, ok && m.Supports(in.Mode)
+		maxVideos, maxSeconds := 0, float64(30)
+		if in.Mode == "reference" && m.MaxReferenceVideos > 0 {
+			maxVideos, maxSeconds = m.MaxReferenceVideos, m.MaxReferenceVideoSeconds
+		}
+		return ark.VideoModelSpec{MaxDuration: 30, MaxImages: m.ReferenceLimit(in.Mode), MaxVideos: maxVideos, MaxReferenceSeconds: maxSeconds}, ok && m.Supports(in.Mode)
 	}
 	if in.Provider != "" && in.Provider != "ark" {
 		return ark.VideoModelSpec{}, false

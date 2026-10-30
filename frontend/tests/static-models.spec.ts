@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from './setup'
 import { STATIC_MODELS, catalogModelFor, catalogModelsFor, modelOptionIdFor } from '../src/models/staticModelCatalog'
+import { apimartVideoDefinition } from '../src/models/apimartVideoDefinitions'
 import { defaultParametersFor, normalizeParametersFor, parameterValuesFor, validParameterValue, type ModelSelection } from '../src/models/modelCatalog'
 import type { SavedCanvas } from '../src/api/persistence'
 
@@ -44,7 +45,7 @@ async function parameters(page: Page, kind: 'image' | 'video') {
 
 test('固定清单只包含采纳的主力与候选，基础参数都有文档来源和合法初值', () => {
   expect(catalogModelsFor('image')).toHaveLength(6)
-  expect(catalogModelsFor('video')).toHaveLength(20)
+  expect(catalogModelsFor('video')).toHaveLength(23)
   expect(new Set(STATIC_MODELS.map((model) => model.optionId)).size).toBe(STATIC_MODELS.length)
   expect(STATIC_MODELS.filter((model) => model.modelId === 'midjourney').map((model) => model.optionId)).toEqual([
     'midjourney-8.2', 'midjourney-8.1', 'midjourney-7', 'midjourney-niji7',
@@ -68,7 +69,8 @@ test('固定清单只包含采纳的主力与候选，基础参数都有文档�
 test('参数按供应商原字段保存，时长特殊值、固定数量和联动不伪造范围', () => {
   const seedance = catalogModelFor('seedance-2.5', 'video')!
   const duration = seedance.parameters!.parameters.find((field) => field.role === 'duration')!
-  expect(validParameterValue(duration, -1, {})).toBe(true) // Historical model contract remains readable.
+  expect(validParameterValue(duration, -1, {})).toBe(false) // New tasks require a priceable duration.
+  expect(apimartVideoDefinition('seedance-2.5')!.parameters.find((field) => field.role === 'duration')!.specialValues).toContainEqual(expect.objectContaining({ value: -1 })) // Historical execution contract remains readable.
   const wanDuration = catalogModelFor('wan3.0-video', 'video')!.parameters!.parameters.find((field) => field.role === 'duration')!
   expect(validParameterValue(wanDuration, -1, {})).toBe(false)
   for (const value of [0, 3, 31]) expect(validParameterValue(duration, value, {})).toBe(false)

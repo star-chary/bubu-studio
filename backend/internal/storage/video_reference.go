@@ -73,3 +73,59 @@ func CheckVideoReference(a Asset) *ReferenceCheck {
 	}
 	return &ReferenceCheck{Eligible: true}
 }
+
+// APIMart Seedance 2.0 supports 480P–720P reference video. The project keeps
+// the existing conservative media constraints in addition to this boundary.
+func CheckAPIMartSeedanceVideoReference(a Asset) *ReferenceCheck {
+	check := CheckVideoReference(a)
+	if !check.Eligible || a.Kind != Video {
+		return check
+	}
+	shortSide := min(a.Media.Width, a.Media.Height)
+	if shortSide < 480 || shortSide > 720 {
+		return &ReferenceCheck{Reason: "参考视频短边须为 480～720 像素"}
+	}
+	return check
+}
+
+// Apply the provider's additional video constraints after the shared checks.
+func CheckAPIMartVideoReference(a Asset, model string) *ReferenceCheck {
+	if model == "seedance-2.0" || model == "seedance-2.0-fast" {
+		return CheckAPIMartSeedanceVideoReference(a)
+	}
+	check := CheckVideoReference(a)
+	if !check.Eligible {
+		return check
+	}
+	motion := model == "kling-v2-6-motion-control" || model == "kling-v3-motion-control"
+	if motion && a.Kind == Image {
+		if a.ContentType != "image/jpeg" && a.ContentType != "image/png" && a.ContentType != "image/webp" {
+			return &ReferenceCheck{Reason: "动作控制的参考图片请使用 JPEG、PNG 或 WebP"}
+		}
+		if a.Bytes > 10_000_000 {
+			return &ReferenceCheck{Reason: "动作控制的参考图片不能超过 10 MB"}
+		}
+	}
+	if a.Kind != Video {
+		return check
+	}
+	switch model {
+	case "seedance-2.5":
+		if int64(a.Media.Width)*int64(a.Media.Height) < 409600 {
+			return &ReferenceCheck{Reason: "参考视频总像素须至少为 409600"}
+		}
+		if a.Media.AudioCodec != "" && a.Media.AudioCodec != "aac" && a.Media.AudioCodec != "mp3" {
+			return &ReferenceCheck{Reason: "参考视频音轨须为 AAC 或 MP3"}
+		}
+	case "kling-v2-6-motion-control", "kling-v3-motion-control":
+		if a.Bytes > 100_000_000 {
+			return &ReferenceCheck{Reason: "动作参考视频不能超过 100 MB"}
+		}
+		if a.Media.DurationSeconds < 3 {
+			return &ReferenceCheck{Reason: "动作参考视频须至少 3 秒"}
+		}
+	default:
+		return &ReferenceCheck{Reason: "当前模型不支持视频参考"}
+	}
+	return check
+}

@@ -7,6 +7,7 @@ import (
 
 	"frame-space/backend/internal/apimart"
 	"frame-space/backend/internal/ark"
+	"frame-space/backend/internal/storage"
 )
 
 func TestAPIMartCreditCompletionFailureBoundary(t *testing.T) {
@@ -125,5 +126,45 @@ func TestAPIMartUnpricedAndMismatchedModelsCannotQuote(t *testing.T) {
 	account, err := db.Credits(ctx, testUserID)
 	if err != nil || account != (CreditAccount{}) {
 		t.Fatalf("rejected quote changed credits: %+v %v", account, err)
+	}
+}
+
+func TestAPIMartReferenceVideoQuoteAndFreeze(t *testing.T) {
+	db, in, id := videoFixture(t)
+	ctx := context.Background()
+	const videoNodeID = "92929292-9292-4292-8292-929292929292"
+	snapshot := Snapshot{Nodes: []Node{
+		{ID: nodeID, Data: NodeData{Kind: "video", Name: "target", ModelSelection: &ModelSelection{Provider: ProviderAPIMart, ModelID: "seedance-2.0", Parameters: map[string]any{}}}},
+		{ID: promptSourceID, Data: NodeData{Kind: "image", Name: "image", Origin: "upload"}},
+		{ID: videoNodeID, Data: NodeData{Kind: "video", Name: "video", Origin: "upload"}},
+	}, Viewport: Viewport{Zoom: 1}}
+	if _, err := db.SaveCanvas(ctx, canvasID, 2, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	asset := storage.Asset{Key: "video-ref", Kind: storage.Video, ContentType: "video/mp4", Bytes: 1000, Scope: storage.Scope{CanvasID: canvasID, NodeID: videoNodeID}, Media: &storage.MediaMetadata{Width: 854, Height: 480, VideoCodec: "h264", FrameRate: 24, DurationSeconds: 2.01}}
+	if err := db.RecordAsset(ctx, asset); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.GrantCredits(ctx, testUserID, 200, "apimart-ref-video-test"); err != nil {
+		t.Fatal(err)
+	}
+	in.Provider, in.Model, in.Mode, in.Prompt = ProviderAPIMart, "seedance-2.0", "reference", "A paper boat"
+	in.Resolution, in.Duration = "720p", 5
+	in.Parameters = map[string]any{"size": "16:9", "resolution": "720p", "duration": 5, "generate_audio": false}
+	in.References = append(in.References, Reference{NodeID: videoNodeID, AssetKey: "video-ref", Kind: "video"})
+	quote, err := db.QuoteCredits(ctx, testUserID, "video", in)
+	if err != nil || quote.Points != 120 {
+		t.Fatalf("reference quote: %+v %v", quote, err)
+	}
+	if _, err = db.CreateBilledTask(ctx, testUserID, id, "video", in, quote.Points+2, quote.PriceVersion); !errors.Is(err, ErrCreditQuoteChanged) {
+		t.Fatalf("stale quote: %v", err)
+	}
+	task, err := db.CreateBilledTask(ctx, testUserID, id, "video", in, quote.Points, quote.PriceVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := db.Credits(ctx, testUserID)
+	if err != nil || task.CreditPoints != 120 || task.CreditPriceVersion != quote.PriceVersion || account != (CreditAccount{Available: 80, Reserved: 120}) {
+		t.Fatalf("freeze: %+v %+v %v", task, account, err)
 	}
 }

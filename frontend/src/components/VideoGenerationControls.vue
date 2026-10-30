@@ -5,7 +5,7 @@ import CatalogParameterForm from './CatalogParameterForm.vue'
 import { VIDEO_MODEL, videoModelDefinition, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
 import { parameterSummary, parameterValuesFor, type ModelSelection } from '../models/modelCatalog'
 import { catalogModelFor, modelOptionIdFor } from '../models/staticModelCatalog'
-import { VIDEO_MODES, apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
+import { VIDEO_MODES, apimartVideoDefinition, apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { NodeProvider } from '../canvas/media'
 
 const props = defineProps<{
@@ -49,12 +49,13 @@ const model = computed(() => videoModelDefinition(props.videoModel ?? VIDEO_MODE
 const supportedModes = computed<readonly VideoMode[]>(() => provider.value === 'ark' ? ['text', 'reference'] : apimartVideoModes(props.selection?.modelId))
 const modeAvailable = computed(() => supportedModes.value.length > 0)
 const selectedMode = computed(() => compatibleVideoMode(props.videoMode ?? 'reference', supportedModes.value) ?? 'text')
-const modeName = computed(() => VIDEO_MODES.find((mode) => mode.value === selectedMode.value)!.name)
-const referenceDescription = computed(() => provider.value === 'apimart' ? '使用参考图片生成视频' : '图片、视频、音频参考')
+const motionControl = computed(() => !!apimartVideoDefinition(props.selection?.modelId)?.motionControl)
+const modeName = computed(() => motionControl.value && selectedMode.value === 'reference' ? '动作控制' : VIDEO_MODES.find((mode) => mode.value === selectedMode.value)!.name)
+const referenceDescription = computed(() => motionControl.value ? '人物参考图 + 动作视频，时长跟随视频' : provider.value === 'apimart' ? '使用参考素材生成视频' : '图片、视频、音频参考')
 const referenceReason = computed(() => {
   if (selectedMode.value === 'text') return ''
   if (selectedMode.value === 'image') return props.referenceError || '请选择一张起始图片'
-  if (!props.referenceCount) return provider.value === 'apimart' ? '全能参考需至少添加 1 张参考图片' : '全能参考需至少添加 1 项参考素材'
+  if (!props.referenceCount) return motionControl.value ? (props.referenceError || '动作控制需要 1 张人物参考图和 1 段参考视频') : '全能参考需至少添加 1 项参考素材'
   return props.referenceError
 })
 const summary = computed(() => {
@@ -160,7 +161,7 @@ defineExpose({ close })
         <p class="popover-heading">视频生成模式</p>
         <button v-for="mode in VIDEO_MODES" :key="mode.value" type="button" role="option" :aria-selected="selectedMode === mode.value" :disabled="!supportedModes.includes(mode.value)" class="video-menu-option" :class="{ 'is-selected': selectedMode === mode.value }" @click="emit('update:videoMode', mode.value); close(true)">
           <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="5" width="12" height="12" rx="2" /><path d="M6 13l3-3 3 3" /></svg>
-          <span class="option-copy"><strong>{{ mode.name }}</strong><small>{{ mode.value === 'reference' ? referenceDescription : mode.description }}</small></span>
+          <span class="option-copy"><strong>{{ mode.value === 'reference' && motionControl ? '动作控制' : mode.name }}</strong><small>{{ mode.value === 'reference' ? referenceDescription : mode.description }}</small></span>
           <svg v-if="selectedMode === mode.value" class="checkmark" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
         </button>
         <p v-if="referenceReason" :id="`${menuId}-reason`" class="mode-reason">{{ referenceReason }}</p>

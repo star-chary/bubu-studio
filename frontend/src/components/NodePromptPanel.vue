@@ -12,7 +12,7 @@ import { apimartReferenceSummary } from '../canvas/videoReferences'
 import { type ModelSelection } from '../models/modelCatalog'
 import { catalogModelFor } from '../models/staticModelCatalog'
 import { apimartVideoEnabled } from '../models/apimartVideo'
-import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
+import { apimartVideoDefinition, apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
 
 const props = defineProps<{
@@ -120,7 +120,9 @@ const referenceSummary = computed(() => {
   return `图片 ${props.references.filter((r) => r.kind === 'image').length}/${max.image} · 视频 ${props.references.filter((r) => r.kind === 'video').length}/${max.video} · 音频 ${props.references.filter((r) => r.kind === 'audio').length}/${max.audio}`
 })
 // 目录节点的参考素材说明来自选中模型的能力信息，缺失时说明尚未提供。
-const apimartReferenceHint = computed(() => apimartReferenceSummary(apimartModel.value))
+const apimartReferenceHint = computed(() => apimartVideoDefinition(props.modelSelection?.modelId)?.motionControl
+  ? '1 张人物图 + 1 段 3～30 秒动作视频 · 输出时长跟随视频 · 保留原声'
+  : apimartReferenceSummary(apimartModel.value))
 
 const layout = computed(() => {
   const margin = 16

@@ -6,28 +6,34 @@ import type { GenerationTask, SavedCanvas, TaskInput } from '../src/api/persiste
 const canvasID = '11111111-1111-4111-8111-111111111111'
 const targetID = '22222222-2222-4222-8222-222222222222'
 const sourceID = '33333333-3333-4333-8333-333333333333'
+const imageID = '44444444-4444-4444-8444-444444444444'
 const editor = (page: Page) => page.getByRole('textbox', { name: '视频提示词', exact: true })
 const generate = (page: Page) => page.getByRole('button', { name: '生成视频', exact: true })
 
-async function setup(page: Page, reference?: 'image' | 'audio') {
+async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixed', videoSeconds = 2, linked = true, videoSize = { width: 854, height: 480 }) {
   const png = readFileSync(new URL('./fixtures/sample-image.png', import.meta.url))
   const mp4 = readFileSync(new URL('./fixtures/reference-video.mp4', import.meta.url))
   const canvas: SavedCanvas = { id: canvasID, version: 1, updatedAt: new Date().toISOString(), assets: [], tasks: [], results: [], snapshot: {
     viewport: { x: 0, y: 0, zoom: 1 }, nodes: [{ id: targetID, position: { x: 80, y: 130 }, data: {
-      kind: 'video', name: '中转站视频', prompt: '', videoMode: 'reference', referenceIds: reference ? [sourceID] : [],
+      kind: 'video', name: '中转站视频', prompt: '', videoMode: 'reference', referenceIds: reference && linked ? [sourceID] : [],
       modelSelection: { provider: 'apimart', modelId: 'seedance-2.0', parameters: { size: '16:9', resolution: '720p', duration: 5, generate_audio: false, seed: 42 } },
     } }],
   } }
   if (reference) {
-    canvas.snapshot.nodes.push({ id: sourceID, position: { x: 800, y: 130 }, data: { kind: reference, name: '参考图片', origin: 'upload' } })
-    canvas.assets.push({ key: 'source', url: '/api/assets/content?key=source', canvasId: canvasID, nodeId: sourceID, kind: reference === 'image' ? 'images' : 'audios', source: 'uploads', contentType: reference === 'image' ? 'image/png' : 'audio/wav', bytes: png.length, media: reference === 'image' ? { width: 960, height: 540 } : { durationSeconds: 2 }, videoReference: { eligible: true } })
+    const video = reference === 'video' || reference === 'mixed'
+    canvas.snapshot.nodes.push({ id: sourceID, position: { x: 800, y: 130 }, data: { kind: video ? 'video' : reference, name: video ? '参考视频' : '参考图片', origin: 'upload' } })
+    canvas.assets.push({ key: 'source', url: '/api/assets/content?key=source', canvasId: canvasID, nodeId: sourceID, kind: reference === 'image' ? 'images' : video ? 'videos' : 'audios', source: 'uploads', contentType: reference === 'image' ? 'image/png' : video ? 'video/mp4' : 'audio/wav', bytes: video ? mp4.length : png.length, media: reference === 'image' ? { width: 960, height: 540 } : video ? { ...videoSize, durationSeconds: videoSeconds, frameRate: 24, videoCodec: 'h264' } : { durationSeconds: 2 }, videoReference: { eligible: true } })
+    if (reference === 'mixed') {
+      canvas.snapshot.nodes.push({ id: imageID, position: { x: 800, y: 450 }, data: { kind: 'image', name: '人物图片', origin: 'upload' } })
+      canvas.assets.push({ key: 'person', url: '/api/assets/content?key=person', canvasId: canvasID, nodeId: imageID, kind: 'images', source: 'uploads', contentType: 'image/png', bytes: png.length, media: { width: 960, height: 540 }, videoReference: { eligible: true } })
+    }
   }
   const submissions: TaskInput[] = []
   let quotes = 0
   await page.route('**/api/credits', (route) => route.fulfill({ json: { available: 200, reserved: 0 } }))
   await page.route('**/api/credits/quote', (route) => { quotes++; return route.fulfill({ json: { points: 124, priceVersion: 'apimart-test-v1' } }) })
   await page.route('**/api/persistence/config', (route) => route.fulfill({ json: { enabled: true } }))
-  await page.route('**/api/assets/content?*', (route) => route.fulfill({ body: route.request().url().includes('key=output') ? mp4 : png, contentType: route.request().url().includes('key=output') ? 'video/mp4' : 'image/png' }))
+  await page.route('**/api/assets/content?*', (route) => { const video = route.request().url().includes('key=output') || ((reference === 'video' || reference === 'mixed') && route.request().url().includes('key=source')); return route.fulfill({ body: video ? mp4 : png, contentType: video ? 'video/mp4' : 'image/png' }) })
   await page.route('**/api/canvases**', (route) => {
     if (route.request().url().includes('/tasks')) return route.fulfill({ json: { tasks: canvas.tasks, hasMore: false } })
     if (route.request().method() === 'PUT') {
@@ -112,13 +118,40 @@ test('APIMart 全能参考提交已保存图片，切换文生保留参考草稿
   await expect(generate(page)).toBeEnabled()
 })
 
-test('APIMart 视频或音频参考不能绕过当前图片参考限制', async ({ page }) => {
+test('APIMart 音频参考仍不能绕过当前限制', async ({ page }) => {
   const state = await setup(page, 'audio')
   await editor(page).fill('Animate the scene.')
   await expect(page.getByText(/当前不支持音频参考/)).toBeVisible()
   await expect(generate(page)).toBeDisabled()
   expect(state.submissions).toHaveLength(0)
   expect(state.quotes()).toBe(0)
+})
+
+for (const [name, model] of [['Seedance 2.0', 'seedance-2.0'], ['Seedance 2.0 Fast', 'seedance-2.0-fast']]) test(`${name} 使用已保存视频参考并按报价提交`, async ({ page }) => {
+  const state = await setup(page, 'video', 2, false)
+  if (model === 'seedance-2.0-fast') await chooseModel(page, name!)
+  await editor(page).fill('Reference the motion in the video.')
+  await page.getByRole('button', { name: '参考', exact: true }).click()
+  await page.getByRole('article', { name: '参考视频', exact: true }).click({ position: { x: 70, y: 60 } })
+  await expect(page.getByRole('dialog').locator('.reference-index')).toContainText('视频1')
+  await page.keyboard.press('Escape')
+  await expect(generate(page)).toBeEnabled()
+  await generate(page).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  expect(state.submissions[0]).toMatchObject({ provider: 'apimart', model, mode: 'reference', references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }], acceptedPoints: 124, priceVersion: 'apimart-test-v1' })
+  await expect(page.getByRole('article', { name: '中转站视频', exact: true }).locator('video')).toHaveJSProperty('readyState', 4)
+  await chooseModel(page, 'Kling 4.0')
+  await expect(page.getByText(/当前不支持视频参考/)).toBeVisible()
+  await expect(generate(page)).toBeDisabled()
+})
+
+test('Seedance 视频参考超出总时长时不请求报价或生成', async ({ page }) => {
+  const state = await setup(page, 'video', 16)
+  await editor(page).fill('Reference the motion in the video.')
+  await expect(page.getByText(/参考视频总时长不能超过 15 秒/)).toBeVisible()
+  await expect(generate(page)).toBeDisabled()
+  expect(state.quotes()).toBe(0)
+  expect(state.submissions).toHaveLength(0)
 })
 
 async function chooseModel(page: Page, name: string) {
@@ -130,10 +163,10 @@ async function chooseMode(page: Page, name: string) {
   await page.getByRole('option', { name: new RegExp(`^${name}`) }).click()
 }
 
-test('统一三项功能按型号置灰，空输入仍可先选功能，专用工作流型号不进入列表', async ({ page }) => {
+test('统一三项功能按型号置灰，尚未接入的专用工作流型号不进入列表', async ({ page }) => {
   await setup(page)
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
-  for (const name of ['Kling 3.0 Motion Control', 'MiniMax H3 Regeneration', 'Wan 2.7 VideoEdit']) {
+  for (const name of ['MiniMax H3 Regeneration', 'Wan 2.7 VideoEdit']) {
     await expect(page.getByRole('option', { name: `${name}（APIMart）`, exact: true })).toHaveCount(0)
   }
   await page.getByRole('option', { name: 'Vidu Q4 Preview（APIMart）', exact: true }).click()
@@ -146,6 +179,55 @@ test('统一三项功能按型号置灰，空输入仍可先选功能，专用�
   await menu.getByRole('option', { name: /^图生视频/ }).click()
   await expect(generate(page)).toBeDisabled()
   await expect(page.getByRole('button', { name: /^选择视频生成类型，当前图生视频/ })).toBeVisible()
+})
+
+test('Seedance 2.5 只提供 480p，并可提交 20 秒视频参考生成 20 秒', async ({ page }) => {
+  const state = await setup(page, 'video', 20)
+  await chooseModel(page, 'Seedance 2.5')
+  await editor(page).fill('Use the reference motion in a new scene.')
+  await page.getByRole('button', { name: /^视频参数，/ }).click()
+  const quality = page.getByRole('group', { name: '清晰度', exact: true })
+  await expect(quality.getByRole('radio')).toHaveCount(1)
+  await expect(quality.getByRole('radio', { name: '480p', exact: true })).toBeChecked()
+  await page.getByRole('spinbutton', { name: '视频时长', exact: true }).fill('20')
+  await page.getByRole('spinbutton', { name: '视频时长', exact: true }).press('Tab')
+  await page.keyboard.press('Escape')
+  await expect(generate(page)).toBeEnabled()
+  await generate(page).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  expect(state.submissions[0]).toMatchObject({ model: 'seedance-2.5', resolution: '480p', duration: 20, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }] })
+})
+
+for (const videoSize of [{ width: 1000, height: 450 }, { width: 2560, height: 1440 }]) {
+  test(`Seedance 2.5 可以提交 ${videoSize.width}×${videoSize.height} 的视频参考`, async ({ page }) => {
+    const state = await setup(page, 'video', 2, true, videoSize)
+    await chooseModel(page, 'Seedance 2.5')
+    await editor(page).fill('Use the reference motion in a new scene.')
+    await expect(generate(page)).toBeEnabled()
+    await generate(page).click()
+    await expect.poll(() => state.submissions.length).toBe(1)
+    expect(state.submissions[0]).toMatchObject({ model: 'seedance-2.5', references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }] })
+  })
+}
+
+for (const [name, model] of [['Kling 2.6 Motion Control', 'kling-v2-6-motion-control'], ['Kling 3.0 Motion Control', 'kling-v3-motion-control']]) test(`${name} 需要人物图和 20 秒动作视频`, async ({ page }) => {
+  const state = await setup(page, 'mixed', 20)
+  await chooseModel(page, name!)
+  await editor(page).fill('Make the person follow the reference motion.')
+  await expect(page.getByRole('button', { name: /^选择视频生成类型，当前动作控制/ })).toBeVisible()
+  await expect(page.getByText(/动作控制需要 1 张人物参考图和 1 段参考视频/)).toBeVisible()
+  await expect(generate(page)).toBeDisabled()
+  expect(state.quotes()).toBe(0)
+  await page.getByRole('button', { name: '参考', exact: true }).click()
+  await page.getByRole('article', { name: '人物图片', exact: true }).click({ position: { x: 70, y: 60 } })
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog').locator('.prompt-reference.has-error')).toHaveCount(0)
+  await expect(page.getByText(/输出时长跟随视频/)).toBeVisible()
+  await expect(generate(page)).toBeEnabled()
+  await generate(page).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  expect(state.submissions[0]).toMatchObject({ model, mode: 'reference', parameters: { mode: 'std' }, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }, { nodeId: imageID, assetKey: 'person', kind: 'image' }] })
+  expect(state.submissions[0]).not.toHaveProperty('duration')
 })
 
 test('切换模型保留兼容功能，不兼容时选择已支持的默认功能并保留素材草稿', async ({ page }) => {
@@ -207,7 +289,7 @@ test('实际时长无法确定的型号不出现在视频模型列表', async ({
   await setup(page)
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   await expect(page.getByRole('option', { name: 'Gemini Omni 1.1 Flash（APIMart）', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('option', { name: 'Seedance 2.5（APIMart）', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('option', { name: 'Seedance 2.5（APIMart）', exact: true })).toHaveCount(1)
 })
 
 test('仅支持文生与图生的型号可使用首帧，不会被普通参考能力的限制误拦截', async ({ page }) => {

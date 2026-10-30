@@ -1,5 +1,5 @@
 {
-  "version": "apimart-2026-10-28-v1",
+  "version": "apimart-2026-10-29-v2",
   "images": {
     "seedream-5-0-lite": { "rates": { "2K": 280000, "3K": 280000, "4K": 280000 } },
     "seedream-5-0-pro": { "rates": { "1K": 292500, "1.5K": 292500, "2K": 585000 }, "freeReferences": 1, "referenceRate": 19500 },
@@ -9,8 +9,11 @@
     "z-image-turbo": { "rates": { "1K": 100000, "2K": 100000 } }
   },
   "videos": {
-    "seedance-2.0": { "rates": { "480P": 660000, "720P": 1420000, "1080P": 3544000, "4K": 7220000 } },
-    "seedance-2.0-fast": { "rates": { "480P": 398400, "720P": 856000 } },
+    "seedance-2.5": { "rates": { "480P": 960800 }, "videoInputRates": { "480P": 576000 } },
+    "seedance-2.0": { "rates": { "480P": 660000, "720P": 1420000, "1080P": 3544000, "4K": 7220000 }, "videoInputRates": { "480P": 400000, "720P": 858400, "1080P": 2156800, "4K": 4443200 } },
+    "seedance-2.0-fast": { "rates": { "480P": 398400, "720P": 856000 }, "videoInputRates": { "480P": 236800, "720P": 512800 } },
+    "kling-v2-6-motion-control": { "rates": { "STD": 571200, "PRO": 914400 } },
+    "kling-v3-motion-control": { "rates": { "STD": 1028800, "PRO": 1371200 } },
     "kling-v4": { "rates": { "720P": 1400000, "1080P": 2100000 } },
     "kling-3.0-turbo": { "rates": { "720P": 1144000, "1080P": 1432000 } },
     "kling-v3": { "rates": { "STD": 672000, "PRO": 896000, "4K": 4285600 }, "audioRates": { "STD": 1008000, "PRO": 1344000, "4K": 4285600 } },

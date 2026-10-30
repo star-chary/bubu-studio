@@ -77,7 +77,7 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
       if (target.data.kind === 'video') {
         // 目录节点不套用 Ark 参考检查；历史 Ark 节点维持原有检查。
         if (isApimartNode(target.data)) {
-          error = target.data.videoMode === 'text' ? '' : apimartReferencesError([{ id, data: source.data }], canvasId.value, catalogModelFor(target.data.modelSelection?.modelId ?? '', 'video'), target.data.videoMode)
+          error = target.data.videoMode === 'text' ? '' : apimartReferencesError([{ id, data: source.data }], canvasId.value, catalogModelFor(target.data.modelSelection?.modelId ?? '', 'video'), target.data.videoMode, true)
         } else if (!target.data.modelSelection) {
           error = videoReferenceError(source.data, canvasId.value, id)
         }

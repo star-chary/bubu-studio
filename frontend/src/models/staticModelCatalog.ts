@@ -77,8 +77,11 @@ for (const definition of APIMART_VIDEO_MODELS) {
     parameters: {
       // Automatic duration cannot be priced before submission. Preserve the
       // adapter contract for existing tasks, but do not offer it for new ones.
-      status: 'ready', schemaVersion: MODEL_CONFIG_VERSION, parameters: definition.parameters.map((field) => definition.modelId in billing.videos && field.role === 'duration' ? { ...field, specialValues: [] } : field),
-      references: { image: { max: definition.maxReferenceImages, info: 'complete' }, video: { max: 0, info: 'complete' }, audio: { max: 0, info: 'complete' } },
+      status: 'ready', schemaVersion: MODEL_CONFIG_VERSION, parameters: definition.parameters.map((field) => {
+        if (definition.modelId === 'seedance-2.5' && field.role === 'resolution') return { ...field, enum: ['480p'], default: '480p' }
+        return definition.modelId in billing.videos && field.role === 'duration' ? { ...field, specialValues: [] } : field
+      }),
+      references: { image: { max: definition.maxReferenceImages, info: 'complete' }, video: { max: definition.maxReferenceVideos ?? 0, info: 'complete' }, audio: { max: 0, info: 'complete' } },
     },
   })
 }

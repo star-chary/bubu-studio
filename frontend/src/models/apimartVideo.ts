@@ -17,7 +17,10 @@ export function apimartVideoInput(selection: ModelSelection, input: Pick<TaskInp
   const values = parameterValuesFor(model, selection.parameters)
   if (model.parameters!.parameters.some((field) => !validParameterValue(field, values[field.key], values))) return null
   if (input.mode === 'reference') {
-    if (!references.length || references.length > (definition.maxReferenceImages ?? 50) || references.some((ref) => ref.kind !== 'image')) return null
+    const images = references.filter((ref) => ref.kind === 'image').length
+    const videos = references.filter((ref) => ref.kind === 'video').length
+    if (!references.length || images > (definition.maxReferenceImages ?? 50) || videos > (definition.maxReferenceVideos ?? 0) || images + videos !== references.length) return null
+    if (definition.motionControl && (images !== 1 || videos !== 1)) return null
   } else if (input.mode === 'image') {
     if (references.length !== 1 || references[0]?.kind !== 'image' || references[0]?.role !== 'first_frame') return null
     if (input.promptParts?.some((part) => part.type === 'reference' && part.nodeId !== references[0]?.nodeId)) return null
