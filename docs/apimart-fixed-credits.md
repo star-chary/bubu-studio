@@ -1,12 +1,12 @@
 # APIMart 固定积分报价
 
-2026-10-29 本地更新：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。本次改动尚未发布线上，具体规则见 [参考视频接入](./apimart-video-reference.md)。以下发布记录保留 2026-10-28 当时状态。
+2026-10-30 发布 `20261030T130851Z`：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。具体规则见 [参考视频接入](./apimart-video-reference.md)，以下记录保留 2026-10-28 当时状态。
 
 2026-10-28：图片和视频的 APIMart 新任务接入平台积分，已随 `20261028T062150Z` 发布。当时价格版本为 `apimart-2026-10-28-v1`，报价以发布时的价格表快照为准；该发布未用真实付费请求核对上游账单。
 
 ## 价格与显示范围
 
-价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元，视频单价按秒、图片单价按张；参考图存在额外费用时另计。价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
+价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元，视频单价按秒、图片单价按张；参考图存在额外费用时另计。原有价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息，新增视频输入和动作控制价格使用 2026-10-29 快照。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
 
 按现有积分尺度，使用固定换算假设 `1 美元 = 7.2 元`，延续方舟积分公式：
 
@@ -18,7 +18,7 @@
 
 当前开放 6 个图片模型：Seedream 5.0 Lite / Pro、FLUX 3 Image / Klein、Qwen Image 3.0 Pro、Z Image Turbo。Seedream Pro 的第一张参考图免费，之后按张计；Qwen Pro 的参考图按张计。其余开放图片模型按所选清晰度的单张价格核算。图片多张生成按独立单图任务提交，页面显示单张积分乘张数的总额；中途余额或报价变化时，可能只提交成功一部分，并停止后续提交。
 
-当前本地开放 23 个视频模型：Seedance 2.5 / 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni / 2.6 Motion Control / 3.0 Motion Control、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。普通视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Seedance 视频参考和 Kling 动作控制按[参考视频接入](./apimart-video-reference.md)计价。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价；APIMart 参考音频仍未开放。
+当前开放 23 个视频模型：Seedance 2.5 / 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni / 2.6 Motion Control / 3.0 Motion Control、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。普通视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Seedance 视频参考和 Kling 动作控制按[参考视频接入](./apimart-video-reference.md)计价。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价；APIMart 参考音频仍未开放。
 
 报价例子（黄金价快照和上述换算假设）：
 
