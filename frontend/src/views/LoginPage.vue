@@ -25,17 +25,13 @@ async function submit() {
 
 <template>
   <main class="login-page" :class="{ 'login-resume': resumeEmail }">
-    <a class="brand login-brand" href="/" aria-label="帧间首页">
-      <img class="brand-mark" src="/favicon.svg" alt="" width="34" height="34" /><span class="brand-name">帧间</span>
-    </a>
+    <header class="login-header">
+      <a class="brand login-brand" href="/" aria-label="帧间首页">
+        <img class="brand-mark" src="/favicon.svg" alt="" width="34" height="34" /><span class="brand-name">帧间</span>
+      </a>
+    </header>
     <div class="login-layout">
-      <div class="login-intro" aria-hidden="true">
-        <div class="login-viewfinder"><span class="viewfinder-corner" /><div class="login-frame frame-back" /><div class="login-frame frame-front"><span>帧间</span><i /></div><span class="viewfinder-corner corner-end" /></div>
-        <p class="login-statement">让想法，<br />有地方展开。</p>
-        <p class="login-caption">图片、视频与灵感，都在你的画布里。</p>
-      </div>
       <section class="login-card" aria-labelledby="login-title">
-        <p class="login-eyebrow">你的创作空间</p>
         <h1 id="login-title">{{ title }}</h1>
         <p class="login-description">{{ resumeEmail ? auth.error : '使用邮箱和密码继续。' }}</p>
         <form @submit.prevent="submit">
@@ -48,7 +44,7 @@ async function submit() {
           </div>
           <p id="password-help" class="login-help">密码长度为 6～20 个字符，支持粘贴密码。</p>
           <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-          <button class="login-submit" type="submit" :disabled="busy">{{ busy ? '正在进入…' : resumeEmail ? '重新登录并继续' : '继续' }}<span v-if="!busy" aria-hidden="true">→</span></button>
+          <button class="login-submit" type="submit" :disabled="busy">{{ busy ? '正在进入…' : resumeEmail ? '重新登录并继续' : '继续' }}</button>
         </form>
         <p v-if="!resumeEmail" class="login-registration">未注册的邮箱将自动创建账号，并获赠 200 测试积分。<br />本次输入的密码将作为登录密码。</p>
         <p class="login-recovery">暂不支持找回密码，请妥善保存。</p>

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import CanvasPage from './views/CanvasPage.vue'
-import GuestHomePage from './views/GuestHomePage.vue'
 import HomePage from './views/HomePage.vue'
 import LoginPage from './views/LoginPage.vue'
 import { auth, restoreAuth } from './auth/session'
@@ -37,7 +36,7 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', restorePage))
     </div>
     <LoginPage v-if="auth.status === 'expired'" :resume-email="auth.user?.email" />
   </template>
-  <HomePage v-else-if="auth.status === 'authenticated'" />
+  <HomePage v-else-if="auth.status === 'authenticated'" authenticated />
   <LoginPage v-else-if="loginRequested" />
-  <GuestHomePage v-else :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginRequested = true" @create="loginRequested = true" @retry="restoreAuth()" />
+  <HomePage v-else :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginRequested = true" @retry="restoreAuth()" />
 </template>

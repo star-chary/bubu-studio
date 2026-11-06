@@ -1,5 +1,6 @@
 import { test, expect } from './setup'
 import type { Page } from '@playwright/test'
+import type { CanvasSummary } from '../src/api/persistence'
 
 const user = { id: '88888888-8888-4888-8888-888888888888', email: 'creator@custom.example' }
 const session = { user, csrfToken: 'mock-csrf', expiresAt: '2099-01-01T00:00:00Z' }
@@ -12,6 +13,7 @@ async function authMock(page: Page, initial = false, acceptedPassword = password
   const privateRequests: string[] = []
   const creates: string[] = []
   const canvases = new Map<string, unknown>()
+  let canvasList: CanvasSummary[] = []
   await page.route('**/api/auth/me', (route) => route.fulfill({ status: signedIn ? 200 : 401, json: signedIn ? session : { error: { code: 'AUTH_REQUIRED' } } }))
   await page.route('**/api/auth/login', (route) => {
     const body = route.request().postDataJSON()
@@ -46,9 +48,9 @@ async function authMock(page: Page, initial = false, acceptedPassword = password
     const id = url.pathname.split('/')[3]
     if (id) return route.fulfill({ json: canvases.get(id) ?? { id, title: '已有画布', version: 0, updatedAt: new Date().toISOString(), assets: [], tasks: [], results: [], snapshot: { nodes: [], viewport: { x: 0, y: 0, zoom: 1 } } } })
     if (rejectCanvasList) { signedIn = false; return route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED', message: '登录已过期' } } }) }
-    return route.fulfill({ json: { canvases: [], hasMore: false } })
+    return route.fulfill({ json: { canvases: canvasList, hasMore: false } })
   })
-  return { attempts, privateRequests, creates, expire() { signedIn = false }, rejectList(value: boolean) { rejectCanvasList = value } }
+  return { attempts, privateRequests, creates, setCanvasList(value: CanvasSummary[]) { canvasList = value }, expire() { signedIn = false }, rejectList(value: boolean) { rejectCanvasList = value } }
 }
 async function fillLogin(page: Page) {
   await page.getByLabel('邮箱', { exact: true }).fill(user.email)
@@ -56,29 +58,42 @@ async function fillLogin(page: Page) {
   await page.getByRole('button', { name: '继续', exact: true }).click()
 }
 
-test('访客首页可访问，登录后查看画布，退出后回到公开首页', async ({ page }) => {
+test('访客首页可访问，登录后查看画布，退出后回到公开首页', async ({ page }, info) => {
   const mock = await authMock(page)
+  mock.setCanvasList([{ id: '11111111-1111-4111-8111-111111111111', title: '私有画布', updatedAt: '2026-10-16T10:00:00Z', nodeCount: 0, preview: [] }])
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '创建空白画布' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '刷新列表' })).toHaveCount(0)
   expect(mock.privateRequests).toEqual([])
-  await expect(page.getByRole('heading', { name: '我的画布' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '查看积分余额和流水' })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('guest-home-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.locator('.home-page').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  await page.screenshot({ path: info.outputPath('guest-home-mobile.png') })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.getByRole('button', { name: '登录 / 注册' }).click()
   await expect(page.getByRole('heading', { name: '进入你的工作空间' })).toBeVisible()
+  await page.screenshot({ path: info.outputPath('login-desktop.png') })
   await expect(page.getByText('未注册的邮箱将自动创建账号，并获赠 200 测试积分。')).toBeVisible()
   await expect(page.getByRole('button', { name: /忘记密码/ })).toHaveCount(0)
   await fillLogin(page)
   await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布：私有画布/ })).toBeVisible()
   await expect(page.getByRole('dialog', { name: '新建画布' })).not.toBeVisible()
   expect(mock.creates).toEqual([])
   expect(mock.attempts).toHaveLength(1)
   await page.reload()
-  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布：私有画布/ })).toBeVisible()
   expect(mock.attempts).toHaveLength(1)
+  const requestCount = mock.privateRequests.length
   await page.getByRole('button', { name: '退出登录', exact: true }).click()
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '创建空白画布' })).toBeVisible()
   await expect(page.getByText(user.email)).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '全部画布' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /打开画布/ })).toHaveCount(0)
+  expect(mock.privateRequests).toHaveLength(requestCount)
 })
 
 for (const value of ['123456', 'a'.repeat(20), '🔑'.repeat(20)]) {
@@ -110,11 +125,12 @@ test('密码不足 6 个或超过 20 个字符时阻止提交，不截断输入'
   }
 })
 
-test('密码错误保持表单，允许显示密码，窄屏无横向溢出', async ({ page }) => {
+test('密码错误保持表单，允许显示密码，窄屏无横向溢出', async ({ page }, info) => {
   await authMock(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await page.getByRole('button', { name: '登录 / 注册' }).click()
+  await page.screenshot({ path: info.outputPath('login-mobile.png') })
   await page.getByLabel('邮箱', { exact: true }).fill(user.email)
   await page.getByLabel('密码', { exact: true }).fill('wrong password')
   await page.getByRole('button', { name: '显示密码', exact: true }).click()
@@ -130,14 +146,14 @@ test('身份服务失败仍可浏览公开首页，并显示重试入口', async
   let failed = true
   await page.route('**/api/auth/me', (route) => route.fulfill({ status: failed ? 503 : 401, json: { error: { message: '登录服务暂时不可用，请稍后重试。' } } }))
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('登录服务暂时不可用')
   await expect(page.getByRole('button', { name: '重新连接' })).toBeVisible()
   await expect(page.getByLabel('邮箱', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '进入临时画布' })).toHaveCount(0)
   failed = false
   await page.getByRole('button', { name: '重新连接' }).click()
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
   await page.getByRole('button', { name: '登录 / 注册' }).click()
   await expect(page.getByRole('heading', { name: '进入你的工作空间' })).toBeVisible()
 })
@@ -145,11 +161,11 @@ test('身份服务失败仍可浏览公开首页，并显示重试入口', async
 test('访客点创建先登录，登录后停留在首页，主动新建并确认才创建画布', async ({ page }) => {
   const mock = await authMock(page)
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
   expect(mock.privateRequests).toEqual([])
   await expect(page.getByText(user.email)).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '全部画布' })).toHaveCount(0)
-  await page.getByRole('button', { name: '创建画布', exact: true }).click()
+  await expect(page.getByRole('link', { name: /打开画布/ })).toHaveCount(0)
+  await page.getByRole('button', { name: '创建空白画布', exact: true }).click()
   await expect(page.getByLabel('邮箱', { exact: true })).toBeVisible()
   expect(mock.creates).toEqual([])
   await fillLogin(page)
@@ -224,12 +240,13 @@ test('保存时登录过期保留草稿，停止后台请求，同账号登录�
 })
 
 test('其他页面改变登录状态时隐藏当前账号内容', async ({ page }) => {
-  await authMock(page, true)
+  const mock = await authMock(page, true)
+  mock.setCanvasList([{ id: '11111111-1111-4111-8111-111111111111', title: '私有画布', updatedAt: '2026-10-16T10:00:00Z', nodeCount: 0, preview: [] }])
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布：私有画布/ })).toBeVisible()
   await page.evaluate(() => { const channel = new BroadcastChannel('frame-space-auth'); channel.postMessage({ type: 'logout' }); channel.close() })
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '我的画布' })).not.toBeVisible()
+  await expect(page.getByRole('button', { name: '登录 / 注册' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布/ })).toHaveCount(0)
   await expect(page.getByText(user.email)).toHaveCount(0)
   await expect(page.getByRole('button', { name: '查看积分余额和流水' })).toHaveCount(0)
 })
@@ -240,8 +257,8 @@ test('首页请求返回 401 时卸载个人画布和积分', async ({ page }) =
   await expect(page.getByRole('heading', { name: '我的画布' })).toBeVisible()
   mock.rejectList(true)
   await page.getByRole('button', { name: '刷新列表' }).click()
-  await expect(page.getByRole('heading', { name: /让想法/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '我的画布' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '登录 / 注册' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /打开画布/ })).toHaveCount(0)
   await expect(page.getByText(user.email)).toHaveCount(0)
   await expect(page.getByRole('button', { name: '查看积分余额和流水' })).toHaveCount(0)
 })
