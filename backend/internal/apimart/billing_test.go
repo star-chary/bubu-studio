@@ -27,6 +27,8 @@ func TestFixedCreditsPricingExamples(t *testing.T) {
 		{"video", "MiniMax-H3", "768P", 5, false, 6, 54},
 		{"video", "wan3.0-video", "720P", 5, false, 0, 58},
 		{"video", "seedance-2.5", "480p", 20, false, 0, 334},
+		{"video", "seedance-2.5", "720p", 5, false, 0, 188},
+		{"video", "seedance-2.5", "1080p", 5, true, 0, 462},
 		{"video", "kling-v2-6-motion-control", "std", 20, false, 1, 198},
 		{"video", "kling-v3-motion-control", "std", 20, false, 1, 356},
 	} {
@@ -41,7 +43,7 @@ func TestFixedCreditsPricingExamples(t *testing.T) {
 		kind, model, resolution string
 		duration                int
 	}{
-		{"video", "seedance-2.5", "720p", 5},
+		{"video", "seedance-2.5", "4k", 5},
 		{"image", "midjourney", "1K", 0},
 		{"video", "wan3.0-video", "720P", -1},
 		{"video", "kling-v3", "unknown", 5},
@@ -86,10 +88,6 @@ func TestBillingTableCoversExecutionResolutions(t *testing.T) {
 			if field.Role == "resolution" {
 				foundResolution = true
 				for _, raw := range field.Enum {
-					// Higher Seedance 2.5 resolutions remain in the adapter only for old tasks.
-					if id == "seedance-2.5" && raw != "480p" {
-						continue
-					}
 					for _, audio := range []bool{false, true} {
 						if _, ok := FixedCredits("video", id, raw.(string), 5, audio, 0); !ok {
 							t.Errorf("video %s %v audio=%t is not priced", id, raw, audio)
@@ -146,6 +144,8 @@ func TestSeedanceVideoReferenceCredits(t *testing.T) {
 		{"seedance-2.0", "4k", 3, 616},
 		{"seedance-2.0-fast", "480p", 3, 34},
 		{"seedance-2.0-fast", "720p", 3, 72},
+		{"seedance-2.5", "720p", 3, 180},
+		{"seedance-2.5", "1080p", 3, 442},
 	}
 	for _, tc := range cases {
 		got, ok := FixedVideoReferenceCredits(tc.model, tc.resolution, 5, tc.seconds)
@@ -163,7 +163,7 @@ func TestSeedanceVideoReferenceCredits(t *testing.T) {
 		{"wan3.0-video", "720p", 5, 2}, {"seedance-2.0-fast", "1080p", 5, 2},
 		{"seedance-2.0", "720p", 5, 0}, {"seedance-2.0", "720p", 5, 16},
 		{"seedance-2.0", "720p", 0, 2},
-		{"seedance-2.5", "720p", 20, 20}, {"seedance-2.5", "480p", 20, 31},
+		{"seedance-2.5", "4k", 20, 20}, {"seedance-2.5", "480p", 20, 31},
 	} {
 		if _, ok := FixedVideoReferenceCredits(tc.model, tc.resolution, tc.duration, tc.input); ok {
 			t.Errorf("accepted unpriced request: %+v", tc)

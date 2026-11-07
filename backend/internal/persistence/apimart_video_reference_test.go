@@ -49,15 +49,17 @@ func (f *multipleReferenceStorage) VideoReferenceURLsWithLimits(_ context.Contex
 
 func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 	for _, tc := range []struct {
-		name, model string
-		motion      bool
-		fail        bool
-		points      int64
+		name, model, resolution string
+		motion                  bool
+		fail                    bool
+		points                  int64
 	}{
-		{"seedance25", "seedance-2.5", false, false, 400},
-		{"kling26", "kling-v2-6-motion-control", true, false, 198},
-		{"kling3", "kling-v3-motion-control", true, false, 356},
-		{"kling26-rejected", "kling-v2-6-motion-control", true, true, 198},
+		{"seedance25-480p", "seedance-2.5", "480p", false, false, 400},
+		{"seedance25-720p", "seedance-2.5", "720p", false, false, 896},
+		{"seedance25-1080p", "seedance-2.5", "1080p", false, false, 2208},
+		{"kling26", "kling-v2-6-motion-control", "", true, false, 198},
+		{"kling3", "kling-v3-motion-control", "", true, false, 356},
+		{"kling26-rejected", "kling-v2-6-motion-control", "", true, true, 198},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, in, id := videoFixture(t)
@@ -79,7 +81,8 @@ func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 			if err := db.RecordAsset(ctx, video); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.GrantCredits(ctx, testUserID, 1000, "twenty-second-video-test"); err != nil {
+			const initialCredits = 4000
+			if err := db.GrantCredits(ctx, testUserID, initialCredits, "twenty-second-video-test"); err != nil {
 				t.Fatal(err)
 			}
 			in.Provider, in.Model, in.Mode, in.Prompt = ProviderAPIMart, tc.model, "reference", "参考动作生成视频"
@@ -91,11 +94,7 @@ func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 				}
 				in.References = append([]Reference{{NodeID: promptSourceID, AssetKey: image.Key, Kind: "image"}}, in.References...)
 			} else {
-				in.Parameters = map[string]any{"size": "16:9", "resolution": "720p", "duration": 20, "generate_audio": false}
-				if _, err := db.QuoteCredits(ctx, testUserID, "video", in); !errors.Is(err, ErrInvalid) {
-					t.Fatalf("unpriced 720p Seedance 2.5 accepted: %v", err)
-				}
-				in.Parameters["resolution"] = "480p"
+				in.Parameters = map[string]any{"size": "16:9", "resolution": tc.resolution, "duration": 20, "generate_audio": false}
 			}
 			quote, err := db.QuoteCredits(ctx, testUserID, "video", in)
 			if err != nil || quote.Points != tc.points {
@@ -105,7 +104,7 @@ func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 				t.Fatal(err)
 			}
 			account, err := db.Credits(ctx, testUserID)
-			if err != nil || account != (CreditAccount{Available: 1000 - tc.points, Reserved: tc.points}) {
+			if err != nil || account != (CreditAccount{Available: initialCredits - tc.points, Reserved: tc.points}) {
 				t.Fatalf("reservation: %+v %v", account, err)
 			}
 			fake := &videoFake{}
@@ -117,9 +116,9 @@ func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 			objects := &multipleReferenceStorage{videoFake: &videoFake{}, checks: make(chan storage.VideoReferenceLimits, 1)}
 			stop := startWorker(t, db, providers, objects)
 			defer stop()
-			status, creditStatus, wantAccount := "succeeded", "settled", (CreditAccount{Available: 1000 - tc.points})
+			status, creditStatus, wantAccount := "succeeded", "settled", (CreditAccount{Available: initialCredits - tc.points})
 			if tc.fail {
-				status, creditStatus, wantAccount = "failed", "released", CreditAccount{Available: 1000}
+				status, creditStatus, wantAccount = "failed", "released", CreditAccount{Available: initialCredits}
 			}
 			task := awaitVideo(t, db, id, status)
 			account, err = db.Credits(ctx, testUserID)
@@ -130,6 +129,9 @@ func TestTwentySecondReferenceModelsAndCredits(t *testing.T) {
 			limits := <-objects.checks
 			if request.Model != tc.model || len(request.References) != len(in.References) || limits.APIMartModel != tc.model || limits.MaxMediaSeconds != 30 || limits.ExpectedVideoSeconds[video.Key] != 20 {
 				t.Fatalf("worker request=%+v preflight=%+v", request, limits)
+			}
+			if !tc.motion && request.Resolution != tc.resolution {
+				t.Fatalf("worker resolution = %q, want %q", request.Resolution, tc.resolution)
 			}
 		})
 	}

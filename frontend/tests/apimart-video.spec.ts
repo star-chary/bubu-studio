@@ -29,9 +29,10 @@ async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixe
     }
   }
   const submissions: TaskInput[] = []
+  const quoteInputs: TaskInput[] = []
   let quotes = 0
   await page.route('**/api/credits', (route) => route.fulfill({ json: { available: 200, reserved: 0 } }))
-  await page.route('**/api/credits/quote', (route) => { quotes++; return route.fulfill({ json: { points: 124, priceVersion: 'apimart-test-v1' } }) })
+  await page.route('**/api/credits/quote', (route) => { quotes++; quoteInputs.push(route.request().postDataJSON()); return route.fulfill({ json: { points: 124, priceVersion: 'apimart-test-v1' } }) })
   await page.route('**/api/persistence/config', (route) => route.fulfill({ json: { enabled: true } }))
   await page.route('**/api/assets/content?*', (route) => { const video = route.request().url().includes('key=output') || ((reference === 'video' || reference === 'mixed') && route.request().url().includes('key=source')); return route.fulfill({ body: video ? mp4 : png, contentType: video ? 'video/mp4' : 'image/png' }) })
   await page.route('**/api/canvases**', (route) => {
@@ -58,7 +59,7 @@ async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixe
   await page.goto(`/?canvas=${canvasID}`)
   await expect(page.getByLabel('画布保存状态')).toHaveText('画布已保存')
   await page.getByRole('article', { name: '中转站视频', exact: true }).click({ position: { x: 60, y: 70 } })
-  return { canvas, submissions, quotes: () => quotes }
+  return { canvas, submissions, quoteInputs, quotes: () => quotes }
 }
 
 test('APIMart 文生视频按固定报价提交，结果回填并在刷新后恢复', async ({ page }, info) => {
@@ -181,21 +182,23 @@ test('统一三项功能按型号置灰，尚未接入的专用工作流型号�
   await expect(page.getByRole('button', { name: /^选择视频生成类型，当前图生视频/ })).toBeVisible()
 })
 
-test('Seedance 2.5 只提供 480p，并可提交 20 秒视频参考生成 20 秒', async ({ page }) => {
+for (const resolution of ['480p', '720p', '1080p']) test(`Seedance 2.5 ${resolution} 可报价并提交 20 秒视频参考生成 20 秒`, async ({ page }) => {
   const state = await setup(page, 'video', 20)
   await chooseModel(page, 'Seedance 2.5')
   await editor(page).fill('Use the reference motion in a new scene.')
   await page.getByRole('button', { name: /^视频参数，/ }).click()
   const quality = page.getByRole('group', { name: '清晰度', exact: true })
-  await expect(quality.getByRole('radio')).toHaveCount(1)
-  await expect(quality.getByRole('radio', { name: '480p', exact: true })).toBeChecked()
+  await expect(quality.getByRole('radio')).toHaveCount(3)
+  await quality.getByRole('radio', { name: resolution, exact: true }).click()
+  await expect(quality.getByRole('radio', { name: resolution, exact: true })).toBeChecked()
   await page.getByRole('spinbutton', { name: '视频时长', exact: true }).fill('20')
   await page.getByRole('spinbutton', { name: '视频时长', exact: true }).press('Tab')
   await page.keyboard.press('Escape')
   await expect(generate(page)).toBeEnabled()
+  await expect.poll(() => state.quoteInputs.some((input) => input.model === 'seedance-2.5' && input.resolution === resolution && input.duration === 20)).toBe(true)
   await generate(page).click()
   await expect.poll(() => state.submissions.length).toBe(1)
-  expect(state.submissions[0]).toMatchObject({ model: 'seedance-2.5', resolution: '480p', duration: 20, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }] })
+  expect(state.submissions[0]).toMatchObject({ model: 'seedance-2.5', resolution, duration: 20, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'video' }] })
 })
 
 for (const videoSize of [{ width: 1000, height: 450 }, { width: 2560, height: 1440 }]) {

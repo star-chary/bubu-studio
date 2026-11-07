@@ -52,6 +52,38 @@ func TestAPIMartVideoTaskIsOwnedIdempotentAndReservesPoints(t *testing.T) {
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 400)
 }
 
+func TestSeedance25HighResolutionHTTPQuoteAndSubmit(t *testing.T) {
+	for _, tc := range []struct {
+		resolution string
+		points     int64
+	}{{"720p", 188}, {"1080p", 462}} {
+		t.Run(tc.resolution, func(t *testing.T) {
+			db := authDB(t)
+			h := NewRouter(nil, &creditTestStorage{}, db) // No worker or provider call.
+			owner := signIn(t, h, "seedance25-"+tc.resolution+"@example.test", "video-pass1")
+			if err := db.GrantCredits(t.Context(), owner.session.User.ID, 1000, "seedance25-high-resolution-test"); err != nil {
+				t.Fatal(err)
+			}
+			canvasID, nodeID := identity.ID(), identity.ID()
+			assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/canvases", map[string]string{"id": canvasID}, nil), 201)
+			snapshot := persistence.Snapshot{Nodes: []persistence.Node{{ID: nodeID, Data: persistence.NodeData{Kind: "video", Name: "APIMart", ModelSelection: &persistence.ModelSelection{Provider: "apimart", ModelID: "seedance-2.5", Parameters: map[string]any{}}}}}, Viewport: persistence.Viewport{Zoom: 1}}
+			assertStatus(t, authRequest(h, owner, http.MethodPut, "/api/canvases/"+canvasID, map[string]any{"version": 0, "snapshot": snapshot}, nil), 200)
+			body := map[string]any{"taskId": identity.ID(), "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "seedance-2.5", "mode": "text", "prompt": "A paper boat", "resolution": tc.resolution, "ratio": "16:9", "duration": 5}
+			quote := quoteAPIMart(t, h, owner, "video", body)
+			if quote.Points != tc.points {
+				t.Fatalf("quote = %d, want %d", quote.Points, tc.points)
+			}
+			body["acceptedPoints"], body["priceVersion"] = quote.Points, quote.PriceVersion
+			w := authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil)
+			assertStatus(t, w, 202)
+			var task persistence.Task
+			if json.Unmarshal(w.Body.Bytes(), &task) != nil || task.Input.Resolution != tc.resolution || task.CreditStatus != "reserved" || task.CreditPoints != tc.points {
+				t.Fatalf("unexpected task: %s", w.Body.String())
+			}
+		})
+	}
+}
+
 func TestMotionControlHTTPQuoteAndSubmitWithoutDuration(t *testing.T) {
 	db := authDB(t)
 	h := NewRouter(nil, &creditTestStorage{}, db) // No worker or provider call.
@@ -99,7 +131,7 @@ func TestAPIMartUnpricedVideoAndAutomaticDurationAreRejected(t *testing.T) {
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/canvases", map[string]string{"id": canvasID}, nil), 201)
 	snapshot := persistence.Snapshot{Nodes: []persistence.Node{{ID: nodeID, Data: persistence.NodeData{Kind: "video", Name: "APIMart", ModelSelection: &persistence.ModelSelection{Provider: "apimart", ModelID: "seedance-2.5", Parameters: map[string]any{}}}}}, Viewport: persistence.Viewport{Zoom: 1}}
 	assertStatus(t, authRequest(h, owner, http.MethodPut, "/api/canvases/"+canvasID, map[string]any{"version": 0, "snapshot": snapshot}, nil), 200)
-	body := map[string]any{"kind": "video", "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "seedance-2.5", "mode": "text", "prompt": "A paper boat", "resolution": "720p", "ratio": "16:9", "duration": 5}
+	body := map[string]any{"kind": "video", "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "seedance-2.5", "mode": "text", "prompt": "A paper boat", "resolution": "4k", "ratio": "16:9", "duration": 5}
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/credits/quote", body, nil), 400)
 	delete(body, "kind")
 	body["taskId"], body["acceptedPoints"], body["priceVersion"] = identity.ID(), 124, "apimart-2026-10-28-v1"

@@ -1,12 +1,14 @@
 # APIMart 固定积分报价
 
+2026-11-07 本地变更（尚未发布）：Seedance 2.5 增加 720p / 1080p 普通生成和视频输入报价，价格版本更新为 `apimart-2026-11-07-v3`；详见 [参考视频接入](./apimart-video-reference.md)。下方已标明日期的发布记录是历史状态。
+
 2026-10-30 发布 `20261030T130851Z`：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。具体规则见 [参考视频接入](./apimart-video-reference.md)，以下记录保留 2026-10-28 当时状态。
 
 2026-10-28：图片和视频的 APIMart 新任务接入平台积分，已随 `20261028T062150Z` 发布。当时价格版本为 `apimart-2026-10-28-v1`，报价以发布时的价格表快照为准；该发布未用真实付费请求核对上游账单。
 
 ## 价格与显示范围
 
-价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元，视频单价按秒、图片单价按张；参考图存在额外费用时另计。原有价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息，新增视频输入和动作控制价格使用 2026-10-29 快照。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
+价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元，视频单价按秒、图片单价按张；参考图存在额外费用时另计。原有价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息，视频输入和动作控制价格使用 2026-10-29 快照，Seedance 2.5 的 720p / 1080p 使用 2026-11-07 预估价格。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
 
 按现有积分尺度，使用固定换算假设 `1 美元 = 7.2 元`，延续方舟积分公式：
 
@@ -35,7 +37,7 @@
 
 分辨率不一定导致价格变化：例如 Seedream 5.0 Lite 的 2K、3K、4K 在本次价格快照中同价。参考素材是每个独立任务的输入，多张图片会重复计入每张任务的参考素材费用。
 
-暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 本次按用户选择开放 480p，固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；未定价的 720p / 1080p 新任务被后端拒绝，历史任务的执行参数保持兼容。
+暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；2026-10-30 发布版只开放 480p，本地新增 720p / 1080p，历史任务的执行参数保持兼容。
 
 ## 业务与数据流
 

@@ -68,6 +68,7 @@ test('固定清单只包含采纳的主力与候选，基础参数都有文档�
 
 test('参数按供应商原字段保存，时长特殊值、固定数量和联动不伪造范围', () => {
   const seedance = catalogModelFor('seedance-2.5', 'video')!
+  expect(seedance.parameters!.parameters.find((field) => field.role === 'resolution')).toMatchObject({ enum: ['480p', '720p', '1080p'], default: '480p' })
   const duration = seedance.parameters!.parameters.find((field) => field.role === 'duration')!
   expect(validParameterValue(duration, -1, {})).toBe(false) // New tasks require a priceable duration.
   expect(apimartVideoDefinition('seedance-2.5')!.parameters.find((field) => field.role === 'duration')!.specialValues).toContainEqual(expect.objectContaining({ value: -1 })) // Historical execution contract remains readable.

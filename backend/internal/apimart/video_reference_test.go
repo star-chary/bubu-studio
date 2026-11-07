@@ -41,11 +41,14 @@ func TestSeedance25AndMotionControlPayloads(t *testing.T) {
 	image := ark.VideoReference{Kind: "image", URL: "https://example.test/image.png"}
 	video := ark.VideoReference{Kind: "video", URL: "https://example.test/video.mp4"}
 	seed := ark.VideoRequest{Model: "seedance-2.5", Mode: "reference", Prompt: "参考@视频1", Parameters: map[string]any{"size": "16:9", "resolution": "480p", "duration": 20, "generate_audio": false}, References: []ark.VideoReference{image, video}}
-	payload, ok := videoPayload(seed)
-	images, imageOK := payload["image_urls"].([]string)
-	videos, videoOK := payload["video_urls"].([]string)
-	if !ok || !imageOK || !videoOK || len(images) != 1 || images[0] != image.URL || len(videos) != 1 || videos[0] != video.URL || payload["omni_reference_task_type"] != "reference" || payload["duration"] != 20 {
-		t.Fatalf("seedance 2.5 payload: %#v, %v", payload, ok)
+	for _, resolution := range []string{"480p", "720p", "1080p"} {
+		seed.Parameters["resolution"] = resolution
+		payload, ok := videoPayload(seed)
+		images, imageOK := payload["image_urls"].([]string)
+		videos, videoOK := payload["video_urls"].([]string)
+		if !ok || !imageOK || !videoOK || len(images) != 1 || images[0] != image.URL || len(videos) != 1 || videos[0] != video.URL || payload["resolution"] != resolution || payload["omni_reference_task_type"] != "reference" || payload["duration"] != 20 {
+			t.Fatalf("seedance 2.5 payload: %#v, %v", payload, ok)
+		}
 	}
 	for _, model := range []string{"kling-v2-6-motion-control", "kling-v3-motion-control"} {
 		t.Run(model, func(t *testing.T) {
