@@ -1,6 +1,6 @@
 # APIMart 固定积分报价
 
-2026-11-07 本地变更（尚未发布）：Seedance 2.5 增加 720p / 1080p 普通生成和视频输入报价，价格版本更新为 `apimart-2026-11-07-v3`；详见 [参考视频接入](./apimart-video-reference.md)。下方已标明日期的发布记录是历史状态。
+2026-11-07 发布 `20261107T154138Z`：Seedance 2.5 增加 720p / 1080p 普通生成和视频输入报价，价格版本更新为 `apimart-2026-11-07-v3`；详见 [参考视频接入](./apimart-video-reference.md)。下方已标明日期的发布记录是历史状态。
 
 2026-10-30 发布 `20261030T130851Z`：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。具体规则见 [参考视频接入](./apimart-video-reference.md)，以下记录保留 2026-10-28 当时状态。
 
@@ -37,7 +37,7 @@
 
 分辨率不一定导致价格变化：例如 Seedream 5.0 Lite 的 2K、3K、4K 在本次价格快照中同价。参考素材是每个独立任务的输入，多张图片会重复计入每张任务的参考素材费用。
 
-暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；2026-10-30 发布版只开放 480p，本地新增 720p / 1080p，历史任务的执行参数保持兼容。
+暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；2026-10-30 发布版只开放 480p，2026-11-07 已增加 720p / 1080p，历史任务的执行参数保持兼容。
 
 ## 业务与数据流
 
