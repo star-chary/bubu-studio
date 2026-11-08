@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
 import { test, expect } from './setup'
 import type { SavedCanvas } from '../src/api/persistence'
+import type { VideoModelId } from '../src/models/videoModels'
 
 const canvasID = '11111111-1111-4111-8111-111111111111'
 const sourceID = '22222222-2222-4222-8222-222222222222'
@@ -11,10 +12,10 @@ const otherID = '44444444-4444-4444-8444-444444444444'
 const parameters = (page: Page) => page.getByRole('button', { name: /^视频参数，/ })
 const panel = (page: Page) => page.getByRole('dialog', { name: '视频提示词', exact: true })
 const editor = (page: Page) => page.getByRole('textbox', { name: '视频提示词', exact: true })
-async function setup(page: Page, reference?: 'image' | 'audio') {
+async function setup(page: Page, reference?: 'image' | 'audio', videoModel?: VideoModelId) {
   const canvas: SavedCanvas = { id: canvasID, title: '视频参数测试', version: 1, assets: [], tasks: [], results: [], updatedAt: new Date().toISOString(), snapshot: {
     viewport: { x: 0, y: 0, zoom: 1 }, nodes: [
-      { id: targetID, position: { x: 450, y: 140 }, data: { kind: 'video', name: '视频 A', prompt: '保留当前提示词', referenceIds: reference ? [sourceID] : [] } },
+      { id: targetID, position: { x: 450, y: 140 }, data: { kind: 'video', name: '视频 A', prompt: '保留当前提示词', videoModel, referenceIds: reference ? [sourceID] : [] } },
       { id: otherID, position: { x: 970, y: 140 }, data: { kind: 'video', name: '视频 B', prompt: '另一个视频的草稿' } },
     ],
   } }
@@ -46,14 +47,16 @@ async function setup(page: Page, reference?: 'image' | 'audio') {
   return { canvas, calls: () => generations }
 }
 
-test('旧画布默认为 2.5 全能参考，模型菜单和文生视频模式可选择', async ({ page }, info) => {
+test('旧画布保留方舟模型，视频列表只提供中转站模型', async ({ page }, info) => {
   const db = await setup(page)
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /^选择视频模型/ })).toContainText('Seedance 2.5')
+  await expect(page.getByRole('button', { name: /^选择视频模型/ })).not.toHaveClass(/is-missing/)
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   const models = page.getByRole('listbox', { name: '视频模型' })
-  await expect(models.getByRole('option')).toHaveCount(26) // 3 个方舟型号 + 23 个固定报价的中转站型号
-  await expect(models.getByRole('option').first()).toContainText('Seedance 2.5')
-  await expect(models.getByRole('option').first()).toHaveAttribute('aria-selected', 'true')
+  await expect(models.getByRole('option')).toHaveCount(23)
+  await expect(models.locator('[data-provider="ark"]')).toHaveCount(0)
+  await expect(models.getByRole('option', { name: 'Seedance 2.5（APIMart）', exact: true })).toHaveCount(1)
   await page.screenshot({ path: info.outputPath('video-model-menu.png') })
   await page.keyboard.press('Escape')
   await expect(panel(page)).toBeVisible()
@@ -94,8 +97,8 @@ test('参数弹层更改比例、画质与时长，滑块和数字同步，按�
   expect(db.calls()).toBe(0)
 })
 
-test('切换到 2.0 自动裁剪时长，保存所选模型并重新获取该模型报价', async ({ page }) => {
-  const db = await setup(page, 'image')
+test('历史 2.0 方舟节点保留模型参数、报价及刷新恢复', async ({ page }) => {
+  const db = await setup(page, 'image', 'doubao-seedance-2-0-260128')
   const quotes: Record<string, unknown>[] = []
   await page.route('**/api/credits/quote', route => {
     const body = route.request().postDataJSON()
@@ -103,20 +106,19 @@ test('切换到 2.0 自动裁剪时长，保存所选模型并重新获取该模
     return route.fulfill({ json: { points: body.model === 'doubao-seedance-2-0-260128' ? 44 : 82, priceVersion: 'test-v2' } })
   })
   await parameters(page).click()
-  await page.getByRole('spinbutton', { name: '视频时长秒数' }).fill('30')
+  await page.getByRole('spinbutton', { name: '视频时长秒数' }).fill('12')
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: /^选择视频模型/ }).click()
-  await page.getByRole('listbox', { name: '视频模型' }).getByRole('option').nth(1).click()
   await expect(page.getByRole('button', { name: /^选择视频模型/ })).toContainText('Seedance 2.0')
-  await expect(parameters(page)).toContainText('15s')
+  await expect(parameters(page)).toContainText('12s')
   await expect(panel(page)).toContainText('图片 1/9 · 视频 0/3 · 音频 0/3')
   await expect(page.locator('.credit-cost-trigger')).toHaveText('44')
-  expect(quotes.at(-1)).toMatchObject({ model: 'doubao-seedance-2-0-260128', mode: 'reference', duration: 15 })
+  await expect.poll(() => quotes.at(-1)).toMatchObject({ model: 'doubao-seedance-2-0-260128', mode: 'reference', duration: 12 })
   await expect.poll(() => db.canvas.snapshot.nodes.find(node => node.id === targetID)?.data.videoModel).toBe('doubao-seedance-2-0-260128')
+  await expect.poll(() => db.canvas.snapshot.nodes.find(node => node.id === targetID)?.data.videoOptions?.duration).toBe(12)
   await page.reload()
   await page.getByRole('article', { name: '视频 A', exact: true }).click({ position: { x: 60, y: 70 } })
   await expect(page.getByRole('button', { name: /^选择视频模型/ })).toContainText('Seedance 2.0')
-  await expect(parameters(page)).toContainText('15s')
+  await expect(parameters(page)).toContainText('12s')
   expect(db.calls()).toBe(0)
 })
 
@@ -149,9 +151,7 @@ test('文生视频只发送提示词；已连接素材保留为草稿但不参�
 })
 
 test('文生视频空提示词与素材标签不能报价；2.0 家族拒绝纯音频参考', async ({ page }) => {
-  const db = await setup(page, 'audio')
-  await page.getByRole('button', { name: /^选择视频模型/ }).click()
-  await page.getByRole('listbox', { name: '视频模型' }).getByRole('option', { name: 'Seedance 2.0 fast', exact: true }).click()
+  const db = await setup(page, 'audio', 'doubao-seedance-2-0-fast-260128')
   await expect(panel(page)).toContainText('音频参考须搭配至少 1 项图片或视频')
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: /^选择视频生成类型/ }).click()
@@ -171,7 +171,7 @@ test('文生视频空提示词与素材标签不能报价；2.0 家族拒绝纯�
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
 })
 
-test('切换到较低素材上限时保留旧连线并明确阻止超限生成', async ({ page }) => {
+test('历史 2.0 节点超过素材上限时保留旧连线并明确阻止生成', async ({ page }) => {
   const db = await setup(page, 'image')
   const target = db.canvas.snapshot.nodes.find(node => node.id === targetID)!
   const ids = Array.from({ length: 9 }, (_, i) => `55555555-5555-4555-8555-${String(i).padStart(12, '0')}`)
@@ -184,8 +184,9 @@ test('切换到较低素材上限时保留旧连线并明确阻止超限生成',
   await expect(page.getByRole('article', { name: '追加图片 9', exact: true })).toContainText('960 × 540')
   await page.getByRole('article', { name: '视频 A', exact: true }).click({ position: { x: 60, y: 70 } })
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: /^选择视频模型/ }).click()
-  await page.getByRole('listbox', { name: '视频模型' }).getByRole('option').nth(1).click()
+  db.canvas.snapshot.nodes.find(node => node.id === targetID)!.data.videoModel = 'doubao-seedance-2-0-260128'
+  await page.reload()
+  await page.getByRole('article', { name: '视频 A', exact: true }).click({ position: { x: 60, y: 70 } })
   await expect(panel(page)).toContainText('最多参考 9 项图片')
   await expect(page.getByRole('button', { name: '生成视频', exact: true })).toBeDisabled()
   expect(target.data.referenceIds).toEqual([sourceID, ...ids])

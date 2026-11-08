@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
 import { test, expect, selectArkModel } from './setup'
+import type { SavedCanvas } from '../src/api/persistence'
 
 test.use({ viewport: { width: 1680, height: 1000 } })
 const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
@@ -13,12 +14,30 @@ async function upload(page: Page, files: Parameters<import('@playwright/test').F
   await (await chooser).setFiles(files)
 }
 async function addNode(page: Page, kind: '图片' | '视频') {
+  if (kind === '视频') {
+    await article(page, '视频节点 1').click({ position: { x: 60, y: 70 } })
+    return
+  }
   await page.mouse.click(1120, 140, { button: 'right' })
   await page.getByRole('menuitem', { name: '添加节点', exact: true }).click()
   await page.getByRole('menuitem', { name: kind, exact: true }).click()
   await article(page, `${kind}节点 1`).click({ position: { x: 60, y: 70 } })
-  // 新节点默认未选择模型；Ark 参考与生成规则回归先显式选择 Ark 模型。
-  await selectArkModel(page, kind === '图片' ? 'image' : 'video', kind === '图片' ? 'Doubao-Seedream-5.0-lite' : 'Seedance 2.5')
+  await selectArkModel(page, 'image', 'Doubao-Seedream-5.0-lite')
+}
+async function legacyVideoCanvas(page: Page) {
+  const canvasID = '33333333-3333-4333-8333-333333333333'
+  const canvas: SavedCanvas = { id: canvasID, title: '历史视频测试', version: 1, assets: [], tasks: [], results: [], updatedAt: new Date().toISOString(), snapshot: {
+    viewport: { x: 0, y: 0, zoom: 1 }, nodes: [{ id: '55555555-5555-4555-8555-555555555555', position: { x: 1120, y: 140 }, data: { kind: 'video', name: '视频节点 1', prompt: '', videoModel: 'doubao-seedance-2-5-260628' } }],
+  } }
+  await page.route('**/api/persistence/config', route => route.fulfill({ json: { enabled: true } }))
+  await page.route('**/api/canvases**', route => {
+    if (route.request().url().includes('/tasks')) return route.fulfill({ json: { tasks: [], hasMore: false } })
+    if (route.request().method() === 'PUT') {
+      canvas.snapshot = route.request().postDataJSON().snapshot
+      return route.fulfill({ json: { version: ++canvas.version } })
+    }
+    return route.fulfill({ json: canvas })
+  })
 }
 function assetFor(canvasId: string, nodeId: string, body: Buffer) {
   const audio = body.toString('ascii', 0, 4) === 'RIFF'
@@ -63,6 +82,7 @@ test('WAV 和 MP3 能播放与拖动进度；音频没有提示词入口且不�
 
 test('保存后按图片1、视频1、图片2、音频1编号；播放不误选、移除同步连线和编号', async ({ page }, testInfo) => {
   await enabledStorage(page)
+  await legacyVideoCanvas(page)
   let uploads = 0
   let generations = 0
   page.on('request', (r) => { if (r.url().includes('/generations')) generations++ })
@@ -71,7 +91,7 @@ test('保存后按图片1、视频1、图片2、音频1编号；播放不误选�
     const q = new URL(route.request().url()).searchParams
     await route.fulfill({ status: 201, json: assetFor(q.get('canvasId')!, q.get('nodeId')!, route.request().postDataBuffer()!) })
   })
-  await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
+  await page.goto('/?canvas=33333333-3333-4333-8333-333333333333')
   await upload(page, [
     { name: 'sample-image.png', mimeType: 'image/png', buffer: readFileSync(fixture('sample-image.png')) },
     { name: 'reference-video.mp4', mimeType: 'video/mp4', buffer: readFileSync(fixture('reference-video.mp4')) },
@@ -113,6 +133,7 @@ test('保存后按图片1、视频1、图片2、音频1编号；播放不误选�
 
 test('音频保存失败保留预览，可重试；服务端不合格原因显示在参考列表', async ({ page }) => {
   await enabledStorage(page)
+  await legacyVideoCanvas(page)
   let calls = 0
   await page.route('**/api/assets?*', async (route) => {
     if (++calls === 1) return route.fulfill({ status: 503, json: { error: { message: '服务端尚未配置 ffprobe' } } })
@@ -120,7 +141,7 @@ test('音频保存失败保留预览，可重试；服务端不合格原因显�
     const asset = assetFor(q.get('canvasId')!, q.get('nodeId')!, route.request().postDataBuffer()!)
     await route.fulfill({ status: 201, json: { ...asset, videoReference: { eligible: false, reason: '单个参考音视频时长须为 2～30 秒' } } })
   })
-  await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
+  await page.goto('/?canvas=33333333-3333-4333-8333-333333333333')
   await upload(page, fixture('reference-audio.wav'))
   const audio = article(page, 'reference-audio.wav')
   await expect(audio.getByRole('alert')).toContainText('ffprobe')

@@ -36,13 +36,14 @@ const arkOptions = computed<PickOption[]>(() => {
 const apimartOptions = computed<PickOption[]>(() => catalogModelsFor(props.category).map((model) => ({
   provider: 'apimart' as const, modelId: model.optionId, optionId: model.optionId, name: modelDisplayName(model),
 })))
-const options = computed(() => [...arkOptions.value, ...apimartOptions.value])
+// 保留方舟视频定义供历史节点回显，但新选择列表只展示中转站视频模型。
+const options = computed(() => [...(props.category === 'image' ? arkOptions.value : []), ...apimartOptions.value])
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
   if (!q) return options.value
   return options.value.filter((option) => option.name.toLowerCase().includes(q) || option.modelId.toLowerCase().includes(q))
 })
-const selected = computed(() => options.value.find((option) => option.optionId === props.modelValue && (!props.provider || option.provider === props.provider)))
+const selected = computed(() => [...arkOptions.value, ...apimartOptions.value].find((option) => option.optionId === props.modelValue && (!props.provider || option.provider === props.provider)))
 const selectedMissing = computed(() => !!props.modelValue && !selected.value)
 const selectedName = computed(() => selected.value?.name ?? [...IMAGE_MODELS, ...VIDEO_MODELS].find((model) => model.id === props.modelValue)?.name ?? props.modelValue)
 
