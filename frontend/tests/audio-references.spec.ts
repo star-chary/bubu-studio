@@ -8,6 +8,7 @@ test.use({ viewport: { width: 1680, height: 1000 } })
 const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
 const article = (page: Page, name: string) => page.getByRole('article', { name, exact: true })
 async function upload(page: Page, files: Parameters<import('@playwright/test').FileChooser['setFiles']>[0], x = 70, y = 130) {
+  await expect(page.getByLabel('画布保存状态')).not.toHaveText('正在恢复画布…')
   await page.mouse.click(x, y, { button: 'right' })
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('menuitem', { name: '上传', exact: true }).click()

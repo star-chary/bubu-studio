@@ -29,7 +29,7 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
 const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate, getSelectedNodes, addSelectedNodes, removeSelectedNodes } = useVueFlow(flowId)
-const { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
 const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const { guides: alignmentGuides, start: startAlignment, drag: alignNode, stop: stopAlignment } = useNodeAlignment(flowId,
@@ -271,6 +271,20 @@ function addNode(kind: Exclude<MediaKind, 'audio'>) {
   if (!contextMenu.value || contextMenu.value.nodeId) return
   createEmptyNode(kind, screenToFlowCoordinate(contextMenu.value.position))
   contextMenu.value = null
+}
+
+function copyContextNode(keepReferences: boolean) {
+  if (!contextMenu.value?.nodeId) return
+  copyNode(contextMenu.value.nodeId, keepReferences)
+  contextMenu.value = null
+  canvasElement.value?.focus({ preventScroll: true })
+}
+
+function pasteContextNode() {
+  if (!contextMenu.value || contextMenu.value.nodeId || !copiedNode.value) return
+  pasteNode(screenToFlowCoordinate(contextMenu.value.position))
+  contextMenu.value = null
+  canvasElement.value?.focus({ preventScroll: true })
 }
 
 function chooseFiles() {
@@ -528,9 +542,12 @@ function resetViewport() {
       v-if="contextMenu && auth.status === 'authenticated'"
       :position="contextMenu.position"
       :target="contextMenu.nodeId ? 'node' : 'canvas'"
+      :can-paste="!!copiedNode"
       @close="contextMenu = null"
       @upload="chooseFiles"
       @add-node="addNode"
+      @copy-node="copyContextNode"
+      @paste="pasteContextNode"
       @delete-node="contextMenu?.nodeId && deleteCanvasNodes([contextMenu.nodeId])"
     />
     <input ref="fileInput" class="local-file-input" type="file" accept="image/*,video/*,audio/mpeg,audio/wav,.mp3,.wav" multiple aria-label="选择本地图片、视频或音频" @change="filesSelected" @cancel="pendingUploadPosition = null" />

@@ -76,7 +76,7 @@ test('右键删除只作用于当前节点，复用画布菜单样式并支持�
     return { width: style.width, background: style.backgroundColor, borderRadius: style.borderRadius }
   })
   await rightClick(page, '图片节点')
-  await expect(menu(page).getByRole('menuitem')).toHaveCount(1)
+  await expect(menu(page).getByRole('menuitem')).toHaveText(['复制', '复制副本', '删除 Delete'])
   await expect(menu(page).getByRole('menuitem', { name: '删除', exact: true })).toHaveAttribute('aria-keyshortcuts', 'Delete')
   expect(await menu(page).evaluate((element) => {
     const style = getComputedStyle(element)
@@ -93,7 +93,8 @@ test('右键删除只作用于当前节点，复用画布菜单样式并支持�
   await rightClick(page, '视频节点')
   await expect(page.getByRole('dialog', { name: '图片提示词', exact: true })).toHaveCount(0)
   await page.keyboard.press('ArrowDown')
-  await expect(menu(page).getByRole('menuitem')).toBeFocused()
+  await page.keyboard.press('End')
+  await expect(menu(page).getByRole('menuitem', { name: '删除', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(article(page, '视频节点')).toHaveCount(0)
   await expect(article(page, '图片节点')).toBeVisible()
@@ -193,7 +194,7 @@ test('参考选择模式和离开确认框内 Delete 不会误删节点', async 
 test('删除菜单在窄屏边缘和窗口缩放后不越界', async ({ page }) => {
   await setup(page)
   await page.setViewportSize({ width: 375, height: 480 })
-  await page.mouse.click(370, 440, { button: 'right' })
+  await article(page, '图片节点').click({ button: 'right', position: { x: 300, y: 180 } })
   await expect(menu(page)).toBeVisible()
   for (const size of [{ width: 375, height: 480 }, { width: 320, height: 400 }]) {
     await page.setViewportSize(size)

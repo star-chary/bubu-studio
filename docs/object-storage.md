@@ -1,5 +1,7 @@
 # 对象存储接入
 
+2026-11-12 本地增加节点素材的同桶 `CopyObject`：复制完成后为新节点记录独立素材，失败可恢复。该操作需要源素材读取和目标素材写入权限，会增加存储用量与请求；实现和验收边界见 [节点复制](./node-copy.md)。
+
 2026-10-11：预览慢加载提示和“重新加载预览”已随 `20261010T161923Z` 发布，超过 30 秒不再主动移除媒体；重试只读取原素材，不重新生成或转存。本地与线上实际前端产物均通过 10/10 项针对性模拟接口浏览器回归，类型检查与构建通过；OSS 读取与缓存策略保持原实现，本轮未调用真实 OSS。见 [素材预览等待与重试](./media-preview.md)。
 
 2026-10-05：素材上传和读取（含 Range）已加入 Session 与数据库所有权校验；私有预览响应为 no-store。已清空旧画布关联的素材记录，原私有 OSS 文件保留但不再通过应用访问。当前权限与本轮验证边界见 [登录与鉴权](./authentication.md)。
@@ -38,7 +40,7 @@ STORAGE_PREFIX=frame-space
 STORAGE_ENV=dev
 ```
 
-地域、凭据与客户端配置以[阿里云 OSS Go SDK V2 文档](https://help.aliyun.com/zh/oss/developer-reference/manual-for-go-sdk-v2/)为依据；杭州外网 Endpoint 已对照[地域和 Endpoint](https://help.aliyun.com/zh/oss/user-guide/regions-and-endpoints)核实。当前只使用 `PutObject` 和 `GetObject`，权限模板见 `backend/oss-policy.example.json`：已限定到 `bubu2/frame-space/dev/*`，可用于给后端使用的 RAM 用户授权；后续改 Bucket、`STORAGE_PREFIX` 或 `STORAGE_ENV` 时需要同步调整。这里只准备本地权限模板，尚未执行云端授权，不会修改桶策略、公开访问权限、生命周期规则或删除已有文件。操作权限参考 [PutObject](https://help.aliyun.com/zh/oss/developer-reference/putobject) 与 [RAM Policy](https://help.aliyun.com/zh/oss/user-guide/ram-policy/)。
+地域、凭据与客户端配置以[阿里云 OSS Go SDK V2 文档](https://help.aliyun.com/zh/oss/developer-reference/manual-for-go-sdk-v2/)为依据；杭州外网 Endpoint 已对照[地域和 Endpoint](https://help.aliyun.com/zh/oss/user-guide/regions-and-endpoints)核实。画布文件使用 `PutObject`、`GetObject` 和 `CopyObject`，权限模板见 `backend/oss-policy.example.json`：已限定到 `bubu2/frame-space/dev/*`，可用于给后端使用的 RAM 用户授权；后续改 Bucket、`STORAGE_PREFIX` 或 `STORAGE_ENV` 时需要同步调整。这里只准备本地权限模板，尚未执行云端授权，不会修改桶策略、公开访问权限、生命周期规则或删除已有文件。操作权限参考 [CopyObject](https://www.alibabacloud.com/help/en/oss/developer-reference/copyobject) 与 [RAM Policy](https://help.aliyun.com/zh/oss/user-guide/ram-policy/)。
 
 ## 已实现的文件组织规则
 

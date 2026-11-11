@@ -35,7 +35,7 @@ func NewRouter(generator imageGenerator, store AssetStore, db *persistence.Store
 	router.POST("/api/images/generations", imageHandler(generator, store, db))
 	router.POST("/api/videos/generations", videoHandler(store, db))
 	registerAssets(router, store, db)
-	registerPersistence(router, db)
+	registerPersistence(router, db, store)
 	registerCredits(router, db)
 	registerPrompts(router, store, db)
 	registerAdmin(router, db, store)

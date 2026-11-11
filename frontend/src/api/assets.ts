@@ -49,3 +49,13 @@ export async function uploadAsset(file: File, scope: AssetScope, signal: AbortSi
   if (!isStoredAsset(body) || body.canvasId !== scope.canvasId || body.nodeId !== scope.nodeId) throw new Error('保存服务未返回正确的文件信息。')
   return body
 }
+
+export async function copyAsset(scope: AssetScope, signal: AbortSignal): Promise<StoredAsset> {
+  const response = await authFetch(`/api/canvases/${scope.canvasId}/nodes/${scope.nodeId}/asset-copy`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal,
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.error?.message || '素材复制失败，请稍后重新保存。')
+  if (!isStoredAsset(body) || body.canvasId !== scope.canvasId || body.nodeId !== scope.nodeId) throw new Error('保存服务未返回正确的副本信息。')
+  return body
+}

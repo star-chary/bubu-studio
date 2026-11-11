@@ -1,8 +1,9 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useVueFlow, type Node, type XYPosition } from '@vue-flow/core'
 import { getMediaKind, getPreviewSize, previewRetryURL, isApimartNode, type MediaDimensions, type MediaKind, type MediaNodeData } from './media'
 import { DEFAULT_IMAGE_MODEL, maxReferenceImages, normalizeImageOptions, type ImageModelId, type ImageOptions } from '../models/imageModels'
-import { getStorageConfig, uploadAsset } from '../api/assets'
+import { copyAsset, getStorageConfig, uploadAsset } from '../api/assets'
+import { auth } from '../auth/session'
 import { useCanvasSession } from './useCanvasSession'
 import { submitTask, retryTaskStorage, type GenerationTask, type TaskInput, type TaskReference } from '../api/persistence'
 import { VIDEO_MODEL, normalizeVideoOptions, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
@@ -17,6 +18,7 @@ import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDe
 import type { CreditQuote } from '../api/credits'
 
 interface AcceptedGeneration { input: TaskInput; quote?: CreditQuote; count?: number }
+interface CopiedNode { data: MediaNodeData; file?: File }
 
 export function useMediaNodes(flowId: string, requestedId: string, temporary: boolean) {
   const { nodes, addNodes, removeNodes, findNode, updateNodeData } = useVueFlow(flowId)
@@ -27,6 +29,8 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   const canvasId = session.canvasId
   const uploadFiles = new Map<string, File>()
   const uploadRequests = new Map<string, AbortController>()
+  const copyRequests = new Map<string, AbortController>()
+  const copiedNode = shallowRef<CopiedNode | null>(null)
   const uploadQueue: string[] = []
   const queuedUploads = new Set<string>()
   let activeUploads = 0
@@ -55,10 +59,80 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       ...(kind === 'video' ? { videoMode: 'reference' as const } : {}) }, position)
   }
 
+  function copyNode(id: string, keepReferences: boolean) {
+    const node = findNode(id)
+    if (!node || node.type !== 'media') return
+    // Freeze the node draft and displayed result at the moment of copying.
+    // Runtime task state is deliberately excluded from the clipboard.
+    const data = JSON.parse(JSON.stringify(node.data)) as MediaNodeData
+    data.generation = undefined
+    data.previewAttempt = undefined
+    if (!keepReferences) {
+      data.referenceIds = []
+      data.firstFrameId = undefined
+      // The plain prompt already contains the displayed @ labels.
+      data.promptParts = undefined
+    }
+    copiedNode.value = { data, file: uploadFiles.get(id) }
+  }
+
+  function pasteNode(position: XYPosition) {
+    const clipboard = copiedNode.value
+    if (!clipboard) return
+    if (nodes.value.length >= 300) {
+      importNotice.value = '每个画布最多 300 个节点，请先清理节点。'
+      return
+    }
+    const data = JSON.parse(JSON.stringify(clipboard.data)) as MediaNodeData
+    data.name = `${Array.from(data.name).slice(0, 252).join('')} 副本`
+    data.generation = undefined
+    const originalReferences = data.referenceIds ?? []
+    data.referenceIds = originalReferences.filter((id) => !!findNode(id))
+    if (data.firstFrameId && !data.referenceIds.includes(data.firstFrameId)) data.firstFrameId = undefined
+    const messages: string[] = []
+    if (data.referenceIds.length !== originalReferences.length) messages.push('部分参考节点已不存在，请重新选择参考素材。')
+
+    const file = clipboard.file
+    const sourceKey = data.copySourceKey ?? (data.storage?.status === 'saved' ? data.asset?.key : undefined)
+    data.asset = undefined
+    data.previewAttempt = undefined
+    data.error = undefined
+    if (file) {
+      data.url = URL.createObjectURL(file)
+      data.copySourceKey = undefined
+      data.storage = undefined
+      data.status = 'loading'
+    } else if (sourceKey) {
+      data.copySourceKey = sourceKey
+      data.url = `/api/assets/content?key=${encodeURIComponent(sourceKey)}`
+      data.storage = { status: 'saving' }
+      data.status = 'loading'
+    } else if (data.url && !data.url.startsWith('blob:')) {
+      data.copySourceKey = undefined
+      data.status = 'loading'
+      if (data.origin === 'generated' && data.storage?.status !== 'saved') messages.push('复制的结果尚未保存，临时地址失效后无法恢复。')
+    } else {
+      data.url = undefined
+      data.copySourceKey = undefined
+      data.storage = undefined
+      data.status = data.origin === 'upload' ? 'error' : 'empty'
+      if (data.origin === 'upload') data.error = '原素材不可用，请重新上传。'
+    }
+    const id = appendNode(data, position)
+    if (file && data.url) {
+      urls.set(id, data.url)
+      uploadFiles.set(id, file)
+    } else if (sourceKey) {
+      void persistCopiedNode(id)
+    }
+    importNotice.value = messages.join(' ')
+  }
+
   function deleteNodes(ids: string[]) {
     removeNodes(ids)
     for (const id of ids) {
       uploadRequests.get(id)?.abort()
+      copyRequests.get(id)?.abort()
       uploadFiles.delete(id)
       queuedUploads.delete(id)
       const queued = uploadQueue.indexOf(id)
@@ -202,7 +276,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function generationInputFor(id: string): TaskInput | null {
     const node = findNode(id)
-    if (!session.ready.value || !session.enabled.value || !node || node.data.origin === 'upload' || node.data.kind === 'audio') return null
+    if (!session.ready.value || !session.enabled.value || !node || node.data.copySourceKey || node.data.origin === 'upload' || node.data.kind === 'audio') return null
     const apimart = node.data.kind === 'video' ? apimartVideoEnabled(node.data.modelSelection) : apimartImageEnabled(node.data.modelSelection)
     if (node.data.modelSelection && !apimart) return null
     const prompt = node.data.promptParts?.length ? (node.data.prompt ?? '') : (node.data.prompt ?? '').trim()
@@ -411,11 +485,48 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   }
 
   function saveUploadedNode(id: string) {
+    if (findNode(id)?.data.copySourceKey) { void persistCopiedNode(id); return }
     if (disposed || !uploadFiles.has(id) || queuedUploads.has(id) || uploadRequests.has(id)) return
     uploadQueue.push(id)
     queuedUploads.add(id)
     pumpUploads()
   }
+
+  async function persistCopiedNode(id: string) {
+    const sourceKey = findNode(id)?.data.copySourceKey
+    if (disposed || !sourceKey || copyRequests.has(id)) return
+    if (!session.enabled.value) {
+      updateNodeData(id, { storage: { status: 'error', error: '当前画布不能保存素材副本。' } })
+      return
+    }
+    const controller = new AbortController()
+    copyRequests.set(id, controller)
+    updateNodeData(id, { storage: { status: 'saving' } })
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      // The backend reads the pending source from this saved snapshot.
+      await session.flush()
+      if (disposed || controller.signal.aborted || findNode(id)?.data.copySourceKey !== sourceKey) return
+      timeout = setTimeout(() => controller.abort(), 125_000)
+      const asset = await copyAsset({ canvasId: canvasId.value, nodeId: id }, controller.signal)
+      if (disposed || findNode(id)?.data.copySourceKey !== sourceKey) return
+      updateNodeData(id, { asset, url: asset.url, copySourceKey: undefined, storage: { status: 'saved' }, status: 'loading', error: undefined })
+    } catch (error) {
+      if (!disposed && findNode(id)?.data.copySourceKey === sourceKey) updateNodeData(id, {
+        storage: { status: 'error', error: controller.signal.aborted ? '素材复制超时，请重新保存。' : error instanceof Error ? error.message : '素材复制失败，请重新保存。' },
+      })
+    } finally {
+      if (timeout) clearTimeout(timeout)
+      copyRequests.delete(id)
+    }
+  }
+
+  // Restore unfinished copies after refresh or re-authentication.
+  watch([session.ready, session.enabled, () => auth.status], ([ready, enabled, status]) => {
+    if (ready && enabled && status === 'authenticated') {
+      for (const node of nodes.value) if (node.data.copySourceKey) void persistCopiedNode(node.id)
+    }
+  }, { flush: 'post' })
 
   function pumpUploads() {
     while (!disposed && activeUploads < 2 && uploadQueue.length) {
@@ -523,6 +634,8 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   onBeforeUnmount(() => {
     disposed = true
     for (const controller of uploadRequests.values()) controller.abort()
+    for (const controller of copyRequests.values()) controller.abort()
+    copyRequests.clear()
     uploadRequests.clear()
     uploadFiles.clear()
     uploadQueue.length = 0
@@ -535,5 +648,5 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

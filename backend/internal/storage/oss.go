@@ -153,6 +153,21 @@ func (o *ossObjects) Get(ctx context.Context, key, byteRange string) (*Content, 
 	return &Content{Body: result.Body, Status: result.StatusCode, Bytes: result.ContentLength, ContentRange: oss.ToString(result.ContentRange), ETag: oss.ToString(result.ETag)}, nil
 }
 
+func (o *ossObjects) Copy(ctx context.Context, source, target, contentType string, metadata map[string]string) error {
+	started := time.Now()
+	_, err := o.client.CopyObject(ctx, &oss.CopyObjectRequest{
+		Bucket: oss.Ptr(o.bucket), Key: oss.Ptr(target),
+		SourceBucket: oss.Ptr(o.bucket), SourceKey: oss.Ptr(source),
+		MetadataDirective: oss.Ptr("REPLACE"), Metadata: metadata,
+		ContentType: oss.Ptr(contentType), Acl: oss.ObjectACLPrivate,
+		StorageClass: oss.StorageClassStandard,
+	})
+	if err != nil {
+		return reportOSSFailure(err, "CopyObject", 1, started)
+	}
+	return nil
+}
+
 func (o *ossObjects) Delete(ctx context.Context, key string) error {
 	started := time.Now()
 	_, err := o.client.DeleteObject(ctx, &oss.DeleteObjectRequest{Bucket: oss.Ptr(o.bucket), Key: oss.Ptr(key)})

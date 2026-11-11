@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"frame-space/backend/internal/persistence"
+	"frame-space/backend/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -59,7 +61,7 @@ func decodeJSON(c *gin.Context, target any, limit int64) bool {
 	}
 	return true
 }
-func registerPersistence(router *gin.Engine, db *persistence.Store) {
+func registerPersistence(router *gin.Engine, db *persistence.Store, store AssetStore) {
 	router.GET("/api/persistence/config", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.JSON(200, gin.H{"enabled": db != nil}) })
 	api := router.Group("/api")
 	api.Use(func(c *gin.Context) {
@@ -154,6 +156,44 @@ func registerPersistence(router *gin.Engine, db *persistence.Store) {
 			return
 		}
 		c.JSON(200, canvas)
+	})
+	api.POST("/canvases/:canvasId/nodes/:nodeId/asset-copy", func(c *gin.Context) {
+		var body struct{}
+		if !decodeJSON(c, &body, 1024) {
+			return
+		}
+		copier, ok := store.(interface {
+			CopyCanvasAsset(context.Context, storage.Asset, storage.Scope) (storage.Asset, error)
+		})
+		if !ok {
+			storageFailure(c, &storage.Error{Status: 503, Code: "STORAGE_NOT_CONFIGURED", Message: "素材保存服务暂不可用。"})
+			return
+		}
+		canvasID, nodeID := c.Param("canvasId"), c.Param("nodeId")
+		source, err := db.CanvasCopySource(c.Request.Context(), canvasID, nodeID)
+		if err != nil {
+			persistenceFailure(c, err)
+			return
+		}
+		existing, found, err := db.ExistingCanvasCopy(c.Request.Context(), canvasID, nodeID, source.Key)
+		if err != nil {
+			persistenceFailure(c, err)
+			return
+		}
+		if found {
+			c.JSON(http.StatusCreated, existing)
+			return
+		}
+		asset, err := copier.CopyCanvasAsset(c.Request.Context(), source, storage.Scope{CanvasID: canvasID, NodeID: nodeID})
+		if err != nil {
+			storageFailure(c, err)
+			return
+		}
+		if err = db.RecordCanvasCopy(c.Request.Context(), canvasID, nodeID, source.Key, asset); err != nil {
+			persistenceFailure(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, asset)
 	})
 	api.PUT("/canvases/:canvasId", func(c *gin.Context) {
 		var body struct {

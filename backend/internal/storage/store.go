@@ -27,6 +27,7 @@ type Asset struct {
 	ContentType    string          `json:"contentType"`
 	Bytes          int64           `json:"bytes"`
 	Source         Source          `json:"source"`
+	CopiedFrom     string          `json:"copiedFrom,omitempty"`
 	Media          *MediaMetadata  `json:"media,omitempty"`
 	VideoReference *ReferenceCheck `json:"videoReference,omitempty"`
 	Scope

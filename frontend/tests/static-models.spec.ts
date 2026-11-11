@@ -183,6 +183,8 @@ test('生成数量保持整数，固定数量只读，原生 mode 和音频字�
   dialog = await parameters(page, 'image')
   await expect(dialog.getByRole('group', { name: '生成数量', exact: true })).toHaveText(/生成数量\s*1张/)
   await expect(dialog.getByRole('group', { name: '生成数量', exact: true }).getByRole('radio')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByLabel('画布保存状态')).toHaveText('画布已保存')
   const video = await setupCanvas(page, 'video')
   await choose(page, 'kling-v3')
   dialog = await parameters(page, 'video')

@@ -20,7 +20,7 @@ test('模型列表选择按节点保存，点击空白和 Esc 分层关闭', asy
   await expect(selector(page)).toContainText('选择模型')
   await selector(page).click()
   const menu = page.getByRole('listbox', { name: '图片模型' })
-  await expect(menu.getByRole('option')).toHaveCount(8)
+  await expect(menu.getByRole('option')).toHaveCount(11)
   await expect(menu.getByRole('option', { name: lite, exact: true })).toBeVisible()
   await expect(menu.getByRole('option', { name: gptImage, exact: true })).toBeVisible()
   await expect(menu.getByRole('option', { name: seedreamPro, exact: true })).toBeVisible()
@@ -65,6 +65,8 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
   await selector(page).focus()
   await page.keyboard.press('ArrowDown')
   const menu = page.getByRole('listbox', { name: '图片模型' })
+  await expect(menu.getByRole('searchbox', { name: '搜索图片模型' })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
   await expect(page.getByRole('option', { name: lite, exact: true })).toBeFocused()
   await page.keyboard.press('End')
   await expect(page.getByRole('option', { name: seedreamPro, exact: true })).toBeFocused()
@@ -76,6 +78,7 @@ test('模型选择支持键盘，窄屏、放大及窗口调整后列表保持�
   await expect(menu).toHaveCount(0)
   await panel.getByRole('button', { name: '放大输入框', exact: true }).click()
   await selector(page).click()
+  await page.keyboard.press('End')
 
   async function withinViewport(width: number, height: number) {
     await expect.poll(async () => {

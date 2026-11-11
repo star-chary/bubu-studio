@@ -205,7 +205,7 @@ function audioLoaded() {
       <span v-if="data.storage?.status === 'saving'" class="asset-status" role="status">保存中…</span>
       <div v-else-if="data.storage?.status === 'error'" class="asset-save-error nodrag nopan" @click.stop @pointerdown.stop @keydown.stop>
         <p role="alert">{{ data.storage.error }}</p>
-        <button v-if="data.origin === 'upload'" type="button" @click.stop="emit('retrySave')">重新保存</button>
+        <button v-if="data.origin === 'upload' || data.copySourceKey" type="button" @click.stop="emit('retrySave')">重新保存</button>
       </div>
       <span v-if="referenceState" class="reference-state-label" aria-hidden="true">{{ referenceState === 'target' ? '正在为此节点选择参考' : referenceState === 'chosen' ? '✓ 已参考' : referenceState === 'available' ? '点击添加参考' : '不可作为参考' }}</span>
     </div>

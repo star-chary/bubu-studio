@@ -129,7 +129,8 @@ test('右键菜单仅包含指定入口，点击添加节点替换同一面板�
   await expectInitialViewport(page)
   await page.mouse.click(500, 250, { button: 'right' })
   const menu = page.getByRole('menu')
-  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点', '粘贴'])
+  await expect(menu.getByRole('menuitem', { name: '粘贴', exact: true })).toBeDisabled()
   const initialBox = await menu.boundingBox()
   expect(initialBox).toMatchObject({ x: 500, y: 250 })
   await menu.screenshot({ path: testInfo.outputPath('context-menu-main.png') })
@@ -145,7 +146,7 @@ test('右键菜单仅包含指定入口，点击添加节点替换同一面板�
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
   await page.mouse.click(600, 300, { button: 'right' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点', '粘贴'])
   await page.mouse.click(300, 250)
   await expect(menu).toHaveCount(0)
 
@@ -191,6 +192,6 @@ test('菜单在窗口边缘和缩放后正确定位，切换内容与调整窗�
 
   // 缩放之后依然在鼠标的屏幕坐标处打开，而不是画布坐标。
   await page.mouse.click(40, 180, { button: 'right' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['上传', '添加节点', '粘贴'])
   expect(await menu.boundingBox()).toMatchObject({ x: 40, y: 180 })
 })

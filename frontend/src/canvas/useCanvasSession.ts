@@ -38,7 +38,7 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
       nodes: nodes.value.map(({ id, position, data }) => ({ id, position: { x: position.x, y: position.y }, data: {
         kind: data.kind, name: data.name, prompt: data.prompt ?? '', imageModel: data.imageModel, imageOptions: data.imageOptions,
         promptParts: data.promptParts, videoModel: data.videoModel, videoMode: data.videoMode, firstFrameId: data.firstFrameId, videoOptions: data.videoOptions,
-        modelSelection: data.modelSelection, origin: data.origin, referenceIds: [...(data.referenceIds ?? [])],
+        modelSelection: data.modelSelection, origin: data.origin, referenceIds: [...(data.referenceIds ?? [])], copySourceKey: data.copySourceKey,
       } })),
       viewport: { ...viewport.value },
     }
@@ -138,15 +138,15 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
       setNodes(canvas.snapshot.nodes.map((node) => {
         const asset = canvas.assets.find((a) => a.nodeId === node.id)
         const result = canvas.results.find((t) => t.input.nodeId === node.id)?.result
-        const mediaURL = result?.url ?? asset?.url
+        const mediaURL = result?.url ?? asset?.url ?? (node.data.copySourceKey ? `/api/assets/content?key=${encodeURIComponent(node.data.copySourceKey)}` : undefined)
         const data: MediaNodeData = { ...node.data, status: mediaURL ? 'loading' : node.data.origin === 'upload' ? 'error' : 'empty' }
         if (mediaURL) {
           data.url = mediaURL
           // A newer temporary result must not inherit an older image's asset.
           // Otherwise the preview and the reference key would identify different images.
           data.asset = result ? result.asset : asset
-          data.origin = result ? 'generated' : asset?.source === 'uploads' ? 'upload' : 'generated'
-          data.storage = data.asset ? { status: 'saved' } : result?.storageError ? { status: 'error', error: result.storageError } : undefined
+          data.origin = result ? 'generated' : asset ? (asset.source === 'uploads' ? 'upload' : 'generated') : node.data.origin
+          data.storage = data.asset ? { status: 'saved' } : node.data.copySourceKey ? { status: 'saving' } : result?.storageError ? { status: 'error', error: result.storageError } : undefined
         } else if (data.origin === 'upload') data.error = '此本地文件尚未上传成功，请重新上传。'
         return { ...node, type: 'media', data, connectable: false, ariaLabel: data.name }
       }))

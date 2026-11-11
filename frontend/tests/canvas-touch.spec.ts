@@ -64,7 +64,7 @@ test('电脑中键拖动画布，右键仍然打开菜单', async ({ page }) => 
   expect(moved.y - before.y).toBeCloseTo(50, 1)
 
   await page.mouse.click(500, 200, { button: 'right' })
-  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['上传', '添加节点'])
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['上传', '添加节点', '粘贴'])
   expect(await readViewport(page)).toEqual(moved)
 })
 

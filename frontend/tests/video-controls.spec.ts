@@ -54,7 +54,7 @@ test('旧画布保留方舟模型，视频列表只提供中转站模型', async
   await expect(page.getByRole('button', { name: /^选择视频模型/ })).not.toHaveClass(/is-missing/)
   await page.getByRole('button', { name: /^选择视频模型/ }).click()
   const models = page.getByRole('listbox', { name: '视频模型' })
-  await expect(models.getByRole('option')).toHaveCount(23)
+  await expect(models.getByRole('option')).toHaveCount(24)
   await expect(models.locator('[data-provider="ark"]')).toHaveCount(0)
   await expect(models.getByRole('option', { name: 'Seedance 2.5（APIMart）', exact: true })).toHaveCount(1)
   await page.screenshot({ path: info.outputPath('video-model-menu.png') })

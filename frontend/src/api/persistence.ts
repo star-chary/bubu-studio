@@ -7,7 +7,7 @@ import type { MediaNodeData } from '../canvas/media'
 import type { ImageGenerationOptions } from '../models/imageModels'
 
 export interface CanvasSnapshot {
-  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'firstFrameId' | 'videoOptions' | 'modelSelection' | 'origin' | 'referenceIds'> }[]
+  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'firstFrameId' | 'videoOptions' | 'modelSelection' | 'origin' | 'referenceIds' | 'copySourceKey'> }[]
   viewport: { x: number; y: number; zoom: number }
 }
 export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio'; role?: 'first_frame' }

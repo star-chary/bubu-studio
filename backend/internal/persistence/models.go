@@ -71,6 +71,8 @@ type NodeData struct {
 	ModelSelection *ModelSelection   `json:"modelSelection,omitempty"`
 	Origin         string            `json:"origin,omitempty"`
 	ReferenceIDs   []string          `json:"referenceIds,omitempty"`
+	// A pending, authenticated copy from an immutable asset in the same canvas.
+	CopySourceKey string `json:"copySourceKey,omitempty"`
 }
 type Node struct {
 	ID       string   `json:"id"`
@@ -258,6 +260,9 @@ func (s Snapshot) Validate() error {
 			return ErrInvalid
 		}
 		if n.Data.Origin != "" && n.Data.Origin != "upload" && n.Data.Origin != "generated" {
+			return ErrInvalid
+		}
+		if len(n.Data.CopySourceKey) > 1024 || (n.Data.CopySourceKey != "" && n.Data.Origin == "") {
 			return ErrInvalid
 		}
 		if n.Data.Kind == "audio" && (n.Data.Origin != "upload" || len(n.Data.ReferenceIDs) != 0 || n.Data.Prompt != "" || n.Data.ImageModel != "") {

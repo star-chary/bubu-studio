@@ -32,6 +32,8 @@ export interface MediaNodeData {
   modelSelection?: ModelSelection
   origin?: 'upload' | 'generated'
   asset?: StoredAsset
+  // 已保存素材的复制尚未完成时保留源 key，刷新后可继续保存。
+  copySourceKey?: string
   storage?: { status: 'saving' | 'saved' | 'error'; error?: string }
   generation?: {
     taskId?: string

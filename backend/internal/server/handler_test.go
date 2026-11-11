@@ -27,6 +27,6 @@ func newHandlerTestRouter(generator imageGenerator, store AssetStore, databases 
 	router.POST("/api/images/generations", imageHandler(generator, store, db))
 	router.POST("/api/videos/generations", videoHandler(store, db))
 	registerAssets(router, store, db)
-	registerPersistence(router, db)
+	registerPersistence(router, db, store)
 	return router
 }
