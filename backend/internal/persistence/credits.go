@@ -205,7 +205,7 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 			switch ref.Kind {
 			case "image":
 				imageCount++
-				if definition.MotionControl {
+				if definition.MotionControl || input.Model == "muse-video-ext" {
 					var asset storage.Asset
 					if err := s.Pool.QueryRow(ctx, `SELECT metadata FROM assets WHERE key=$1 AND canvas_id=$2`, ref.AssetKey, input.CanvasID).Scan(&asset); err != nil {
 						return CreditQuote{}, mapError(err)
@@ -243,6 +243,9 @@ func (s *Store) QuoteCredits(ctx context.Context, userID, kind string, input Inp
 		}
 		if !ok {
 			return CreditQuote{}, ErrInvalid
+		}
+		if input.Model == "gemini-nano-banana-2.1" && kind == "image" {
+			points *= int64(nanoBatchCount(input))
 		}
 		return CreditQuote{Points: points, PriceVersion: apimart.BillingVersion()}, nil
 	}
@@ -369,6 +372,9 @@ func (s *Store) CreateBilledTask(ctx context.Context, userID, id, kind string, i
 	if err != nil {
 		return Task{}, err
 	}
+	if err = s.validateImageBatchTargets(ctx, input, kind); err != nil {
+		return Task{}, err
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Task{}, err
@@ -404,6 +410,9 @@ func (s *Store) CreateBilledTask(ctx context.Context, userID, id, kind string, i
 				return existing, nil
 			}
 		}
+		return Task{}, err
+	}
+	if err = insertImageBatchChildren(ctx, tx, id, input, compiled, bindings); err != nil {
 		return Task{}, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO credit_ledger(user_id,task_id,operation,available_delta,reserved_delta,available_after,reserved_after,idempotency_key)

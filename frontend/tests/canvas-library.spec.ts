@@ -66,6 +66,20 @@ async function editImage(page: Page, prompt: string) {
   await page.getByRole('textbox', { name: '图片提示词' }).fill(prompt)
 }
 
+test('400% 画布视口自动保存并在刷新后恢复', async ({ page }) => {
+  const db = await libraryMock(page, [emptyCanvas(firstID, '放大画布')])
+  await page.goto(`/?canvas=${firstID}`)
+  await saved(page)
+  await page.mouse.move(600, 300)
+  await page.mouse.wheel(0, -20000)
+  await expect(page.getByLabel('当前缩放比例')).toHaveText('400%')
+  await expect.poll(() => db.canvases.get(firstID)!.snapshot.viewport.zoom).toBe(4)
+  await saved(page)
+  await page.reload()
+  await saved(page)
+  await expect(page.getByLabel('当前缩放比例')).toHaveText('400%')
+})
+
 test('首页列出旧画布，忽略旧的最后打开记录，不自动新建；窄屏与键盘可用', async ({ page }, info) => {
   const db = await libraryMock(page, [emptyCanvas(firstID, '以前的画布')])
   await page.addInitScript((id) => localStorage.setItem('frame-space:canvas', id), firstID)

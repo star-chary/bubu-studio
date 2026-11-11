@@ -11,7 +11,8 @@ import { hasPromptReferences, normalizeParts, promptText, type PromptPart } from
 import { normalizeParametersFor, parameterValuesFor, referenceCapability, validParameterValue, type ModelSelection } from '../models/modelCatalog'
 import { MODEL_CONFIG_VERSION, catalogModelFor } from '../models/staticModelCatalog'
 import { apimartVideoEnabled, apimartVideoInput } from '../models/apimartVideo'
-import { apimartImageCount, apimartImageEnabled, apimartImageInput } from '../models/apimartImage'
+import { apimartImageCount, apimartImageEnabled, apimartImageInput, apimartImageProviderModel, apimartNativeImageBatch } from '../models/apimartImage'
+import { apimartImageDefinition } from '../models/apimartImageDefinitions'
 import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
 
@@ -135,6 +136,9 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     if (effectiveLimit === 0 && ids.length) return fail('所选模型不支持参考图片，请移除参考或切换模型')
     if (effectiveLimit !== undefined && ids.length > effectiveLimit) return fail(`所选模型最多支持 ${effectiveLimit} 张参考图片，请移除多余参考或切换模型`)
     const keys: string[] = []
+    const definition = apimart && target.data.modelSelection ? apimartImageDefinition(apimartImageProviderModel(target.data.modelSelection)) : undefined
+    const maxReferenceBytes = definition?.maxReferenceBytes
+    let referenceBytes = 0
     for (const sourceId of ids) {
       const source = findNode(sourceId)
       if (!source || sourceId === id || source.data.kind !== 'image') return fail('请选择其他图片节点作为参考')
@@ -151,6 +155,9 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
         if (width <= 14 || height <= 14 || width * height > 36_000_000 || width > 16 * height || height > 16 * width) return fail('参考图片宽高须大于 14 像素、宽高比在 1:16～16:1 之间，总像素不超过 3600 万')
       }
       if (keys.includes(asset.key)) return fail('参考图片不能重复')
+      if (definition?.maxSingleReferenceBytes && asset.bytes > definition.maxSingleReferenceBytes) return fail('参考图片单张不能超过 20 MB，请压缩或更换图片')
+      referenceBytes += asset.bytes
+      if (maxReferenceBytes && referenceBytes > maxReferenceBytes) return fail(definition?.modelId === 'gemini-nano-banana-2.1-ext' ? '参考图片总大小不能超过 50 MB，请压缩或减少参考图片' : '参考图片总大小不能超过 11 MiB，请压缩或减少参考图片')
       keys.push(asset.key)
     }
     return { keys, error: '' }
@@ -258,7 +265,7 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       updateNodeData(id, { generation: { status: 'error', prompt, model, error: '每个画布最多 300 个节点，请减少生成数量或清理节点。' } })
       return
     }
-    // 每张保留独立任务、资源和积分流水；批量只是同一输入快照的多次单图提交。
+    // 其他模型仍逐张提交；Nano 官方版一次提交，结果分别落到这些节点。
     const ids = [id]
     let slot = 1
     for (let index = 1; index < count; index++) {
@@ -284,6 +291,14 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     let submitted = 0
     try {
       await session.flush()
+      if (apimartNativeImageBatch(input)) {
+        if (disposed || ids.some((nodeId) => !findNode(nodeId))) throw new Error('目标节点已移除，本次生成未提交。')
+        updateNodeData(id, { generation: { status: 'generating', taskId: jobs[0]!.taskId, prompt, model, referenceKeys } })
+        const task = await submitTask(jobs[0]!.taskId, { ...input, outputNodeIds: ids, acceptedPoints: quote.points, priceVersion: quote.priceVersion })
+        submitted = ids.length
+        if (!disposed) session.track(task, true)
+        return
+      }
       for (const job of jobs) {
         if (disposed) return
         if (!findNode(job.nodeId)) throw new Error('目标节点已移除，剩余图片未提交。')
@@ -296,6 +311,13 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     } catch (error) {
       if (disposed) return
       const message = error instanceof Error ? error.message : '图片提交失败，请稍后重试。'
+      if (apimartNativeImageBatch(input)) {
+        importNotice.value = `本批图片提交未能确认：${message} 请查看任务记录，避免重复生成。`
+        for (const job of jobs) {
+          if (findNode(job.nodeId)) updateNodeData(job.nodeId, { generation: { ...findNode(job.nodeId)!.data.generation, status: 'error', prompt, model, referenceKeys, error: message } })
+        }
+        return
+      }
       if (count > 1) importNotice.value = `本批共 ${count} 张，已确认提交 ${submitted} 张。${message} 请查看各节点或任务记录，避免重复生成。`
       for (const [index, job] of jobs.entries()) {
         if (index < submitted || !findNode(job.nodeId)) continue

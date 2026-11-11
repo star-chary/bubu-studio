@@ -15,19 +15,29 @@ export function apimartImageCount(selection: ModelSelection): number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 1
 }
 
+export function apimartNativeImageBatch(input: TaskInput): boolean {
+  return input.provider === 'apimart' && input.model === 'gemini-nano-banana-2.1' && [2, 4].includes(Number(input.parameters?.n))
+}
+
+export function apimartImageProviderModel(selection: ModelSelection): string {
+  return selection.modelId === 'gemini-nano-banana-2.1' && apimartImageCount(selection) === 1 ? 'gemini-nano-banana-2.1-ext' : selection.modelId
+}
+
 export function apimartImageInput(selection: ModelSelection, input: Pick<TaskInput, 'canvasId' | 'nodeId' | 'prompt' | 'promptParts'>, referenceKeys: string[]): TaskInput | null {
   const model = catalogModelFor(selection.modelId, 'image', selection.parameters)
-  const definition = apimartImageDefinition(selection.modelId)
-  if (!apimartImageEnabled(selection) || !definition || !model?.parameters || !input.prompt.trim() || referenceKeys.length > definition.maxReferenceImages) return null
+  if (!model?.parameters) return null
   const values = parameterValuesFor(model, selection.parameters)
+  const providerModel = apimartImageProviderModel(selection)
+  const definition = apimartImageDefinition(providerModel)
+  if (!apimartImageEnabled(selection) || !definition || !input.prompt.trim() || referenceKeys.length > definition.maxReferenceImages) return null
   if (model.parameters.parameters.some((field) => !validParameterValue(field, values[field.key], values))) return null
   if (selection.modelId === 'seedream-5-0-lite' && values.size === 'auto' && !referenceKeys.length) return null
   // Only documented basic fields are sent. Each output has an independent task.
   const visible = new Set(model.parameters.parameters.map((field) => field.key))
   const parameters = Object.fromEntries(definition.parameters.map(({ key }) => {
-    if (key === 'n') return [key, 1]
+    if (key === 'n') return [key, selection.modelId === 'gemini-nano-banana-2.1' ? values.n : 1]
     if (key === 'hd' && !visible.has(key)) return [key, false]
     return [key, values[key]]
   }).filter(([, value]) => value !== undefined))
-  return { ...input, provider: 'apimart', model: selection.modelId, parameters, ...(referenceKeys.length ? { referenceKeys } : {}) }
+  return { ...input, provider: 'apimart', model: providerModel, parameters, ...(referenceKeys.length ? { referenceKeys } : {}) }
 }

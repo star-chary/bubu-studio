@@ -52,7 +52,7 @@
 
 ## 接口契约
 
-配置远程 MCP 后，`GET /api/admin/me` 额外返回 `mcpEnabled: true`，管理台显示“AI 应用授权”入口。管理员可在 `/oauth/connections` 查看和撤销自己授予应用的只读用户查询权限；登录支持安全返回本站授权页。原有网页 Session 和 MCP Bearer 凭证独立，详见 [用户查询 MCP](./mcp.md)。
+历史版本的 MCP 为管理员用户查询，管理台显示“AI 应用授权”入口。2026-11-12 已发布的 MCP 改为普通用户画布读取、节点编辑和生成授权，移除用户查询 MCP；管理台自身用户查询接口不变。网页 Session 和 MCP Bearer 凭证独立，详见 [画布 MCP](./mcp.md)。
 
 除登录外，以下管理接口均需有效 Session 和 admin 角色。读取响应禁止缓存。
 

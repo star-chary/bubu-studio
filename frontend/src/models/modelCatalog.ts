@@ -25,6 +25,7 @@ export interface CatalogParameter {
   default?: unknown
   fixed?: unknown
   required: boolean
+  hidden?: boolean
   conditions?: ParameterCondition[]
   unresolved?: boolean
   // 官方文档补充的 UI 描述：离散特殊值与连续范围分开，避免 -1 进入时长滑块。
@@ -72,7 +73,7 @@ export function modelSummary(model: CatalogModel): string {
   const tags = model.capabilityTags?.filter(Boolean) ?? []
   const parts = tags.slice(0, 3)
   if (!parts.length && model.parameters?.parameters.length) {
-    return model.parameters.parameters.map((p) => p.label).join(' / ')
+    return model.parameters.parameters.filter((p) => !p.hidden).map((p) => p.label).join(' / ')
   }
   return parts.join(' / ')
 }

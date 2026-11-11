@@ -8,12 +8,13 @@ import (
 
 // The same release-time table controls the model menu and the server quote.
 // Prices are APIMart's public Gold USD prices in units of 0.0000001 USD;
-// image rates are per image, video rates are per output second.
+// image rates are per image, video rates are per second unless marked per generation.
 //
 //go:embed billing_models.json
 var billingJSON []byte
 
 type billingRate struct {
+	BillingUnit     string           `json:"billingUnit"`
 	Rates           map[string]int64 `json:"rates"`
 	AudioRates      map[string]int64 `json:"audioRates"`
 	VideoInputRates map[string]int64 `json:"videoInputRates"`
@@ -72,12 +73,16 @@ func FixedCredits(kind, model, resolution string, duration int, audio bool, refe
 	if audio && len(entry.AudioRates) > 0 {
 		rates = entry.AudioRates
 	}
-	rate := rates[strings.ToUpper(resolution)]
+	priceKey := strings.ToUpper(resolution)
+	if kind == "image" && priceKey == "" {
+		priceKey = "DEFAULT" // Models without a user-selectable resolution.
+	}
+	rate := rates[priceKey]
 	if rate <= 0 {
 		return 0, false
 	}
 	cost := rate
-	if kind == "video" {
+	if kind == "video" && entry.BillingUnit != "generation" {
 		cost *= int64(duration)
 	}
 	cost += int64(max(0, references-entry.FreeReferences)) * entry.ReferenceRate

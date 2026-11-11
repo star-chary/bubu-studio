@@ -21,6 +21,59 @@ func TestAPIMartCreditCompletionFailureBoundary(t *testing.T) {
 	}
 }
 
+func TestMuseCreditQuoteAndReferenceSizeLimit(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	const sourceA = "33333333-3333-4333-8333-333333333333"
+	const sourceB = "44444444-4444-4444-8444-444444444444"
+	snapshot := testSnapshot()
+	snapshot.Nodes[0].Data.ModelSelection = &ModelSelection{Provider: ProviderAPIMart, ModelID: "muse-image-ext", Parameters: map[string]any{}}
+	snapshot.Nodes = append(snapshot.Nodes,
+		Node{ID: sourceA, Data: NodeData{Kind: "image", Name: "source A", Origin: "upload"}},
+		Node{ID: sourceB, Data: NodeData{Kind: "image", Name: "source B", Origin: "upload"}},
+	)
+	if _, err := db.SaveCanvas(ctx, canvasID, 1, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range []storage.Asset{
+		{Key: "muse-a", Kind: storage.Image, Bytes: 5 << 20, Scope: storage.Scope{CanvasID: canvasID, NodeID: sourceA}},
+		{Key: "muse-b", Kind: storage.Image, Bytes: 6 << 20, Scope: storage.Scope{CanvasID: canvasID, NodeID: sourceB}},
+	} {
+		if err := db.RecordAsset(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.GrantCredits(ctx, testUserID, 10, "muse-test"); err != nil {
+		t.Fatal(err)
+	}
+	in := Input{Provider: ProviderAPIMart, Model: "muse-image-ext", Prompt: "paper boat", CanvasID: canvasID, NodeID: nodeID, ReferenceKeys: []string{"muse-a", "muse-b"}}
+	quote, err := db.QuoteCredits(ctx, testUserID, "image", in)
+	if err != nil || quote.Points != 2 || quote.PriceVersion != apimart.BillingVersion() {
+		t.Fatalf("11 MiB should be accepted: %+v %v", quote, err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE assets SET metadata=jsonb_set(metadata,'{bytes}',to_jsonb($2::bigint)) WHERE key=$1`, "muse-b", (6<<20)+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.QuoteCredits(ctx, testUserID, "image", in); !errors.Is(err, ErrReferenceSize) {
+		t.Fatalf("oversized references should not be quoted: %v", err)
+	}
+	id := "81818181-8181-4181-8181-818181818181"
+	if _, err := db.CreateBilledTask(ctx, testUserID, id, "image", in, quote.Points, quote.PriceVersion); !errors.Is(err, ErrReferenceSize) {
+		t.Fatalf("oversized references should not create a billed task: %v", err)
+	}
+	account, err := db.Credits(ctx, testUserID)
+	if err != nil || account != (CreditAccount{Available: 10}) {
+		t.Fatalf("rejected input changed credits: %+v %v", account, err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE assets SET metadata=jsonb_set(metadata,'{bytes}',to_jsonb($2::bigint)) WHERE key=$1`, "muse-b", 6<<20); err != nil {
+		t.Fatal(err)
+	}
+	task, err := db.CreateBilledTask(ctx, testUserID, id, "image", in, quote.Points, quote.PriceVersion)
+	if err != nil || task.CreditPoints != 2 || task.CreditStatus != "reserved" || len(task.Bindings) != 2 {
+		t.Fatalf("valid task was not reserved: %+v %v", task, err)
+	}
+}
+
 func TestAPIMartCreditsReleaseAndUncertainReview(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -107,11 +160,11 @@ func TestAPIMartUnpricedAndMismatchedModelsCannotQuote(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
 	snapshot := testSnapshot()
-	snapshot.Nodes[0].Data.ModelSelection = &ModelSelection{Provider: ProviderAPIMart, ModelID: "gemini-nano-banana-2.1", Parameters: map[string]any{}}
+	snapshot.Nodes[0].Data.ModelSelection = &ModelSelection{Provider: ProviderAPIMart, ModelID: "gpt-image-2.5-flare", Parameters: map[string]any{}}
 	if _, err := db.SaveCanvas(ctx, canvasID, 1, snapshot); err != nil {
 		t.Fatal(err)
 	}
-	in := Input{Provider: ProviderAPIMart, Model: "gemini-nano-banana-2.1", Prompt: "paper boat", CanvasID: canvasID, NodeID: nodeID}
+	in := Input{Provider: ProviderAPIMart, Model: "gpt-image-2.5-flare", Prompt: "paper boat", CanvasID: canvasID, NodeID: nodeID}
 	if _, err := db.QuoteCredits(ctx, testUserID, "image", in); !errors.Is(err, ErrModelGenerationNotEnabled) {
 		t.Fatalf("unpriced model accepted: %v", err)
 	}

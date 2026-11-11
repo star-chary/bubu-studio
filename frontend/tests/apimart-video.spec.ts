@@ -10,7 +10,7 @@ const imageID = '44444444-4444-4444-8444-444444444444'
 const editor = (page: Page) => page.getByRole('textbox', { name: '视频提示词', exact: true })
 const generate = (page: Page) => page.getByRole('button', { name: '生成视频', exact: true })
 
-async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixed', videoSeconds = 2, linked = true, videoSize = { width: 854, height: 480 }) {
+async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixed', videoSeconds = 2, linked = true, videoSize = { width: 854, height: 480 }, imageBytes?: number) {
   const png = readFileSync(new URL('./fixtures/sample-image.png', import.meta.url))
   const mp4 = readFileSync(new URL('./fixtures/reference-video.mp4', import.meta.url))
   const canvas: SavedCanvas = { id: canvasID, version: 1, updatedAt: new Date().toISOString(), assets: [], tasks: [], results: [], snapshot: {
@@ -22,7 +22,7 @@ async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixe
   if (reference) {
     const video = reference === 'video' || reference === 'mixed'
     canvas.snapshot.nodes.push({ id: sourceID, position: { x: 800, y: 130 }, data: { kind: video ? 'video' : reference, name: video ? '参考视频' : '参考图片', origin: 'upload' } })
-    canvas.assets.push({ key: 'source', url: '/api/assets/content?key=source', canvasId: canvasID, nodeId: sourceID, kind: reference === 'image' ? 'images' : video ? 'videos' : 'audios', source: 'uploads', contentType: reference === 'image' ? 'image/png' : video ? 'video/mp4' : 'audio/wav', bytes: video ? mp4.length : png.length, media: reference === 'image' ? { width: 960, height: 540 } : video ? { ...videoSize, durationSeconds: videoSeconds, frameRate: 24, videoCodec: 'h264' } : { durationSeconds: 2 }, videoReference: { eligible: true } })
+    canvas.assets.push({ key: 'source', url: '/api/assets/content?key=source', canvasId: canvasID, nodeId: sourceID, kind: reference === 'image' ? 'images' : video ? 'videos' : 'audios', source: 'uploads', contentType: reference === 'image' ? 'image/png' : video ? 'video/mp4' : 'audio/wav', bytes: video ? mp4.length : (imageBytes ?? png.length), media: reference === 'image' ? { width: 960, height: 540 } : video ? { ...videoSize, durationSeconds: videoSeconds, frameRate: 24, videoCodec: 'h264' } : { durationSeconds: 2 }, videoReference: { eligible: true } })
     if (reference === 'mixed') {
       canvas.snapshot.nodes.push({ id: imageID, position: { x: 800, y: 450 }, data: { kind: 'image', name: '人物图片', origin: 'upload' } })
       canvas.assets.push({ key: 'person', url: '/api/assets/content?key=person', canvasId: canvasID, nodeId: imageID, kind: 'images', source: 'uploads', contentType: 'image/png', bytes: png.length, media: { width: 960, height: 540 }, videoReference: { eligible: true } })
@@ -32,7 +32,7 @@ async function setup(page: Page, reference?: 'image' | 'audio' | 'video' | 'mixe
   const quoteInputs: TaskInput[] = []
   let quotes = 0
   await page.route('**/api/credits', (route) => route.fulfill({ json: { available: 200, reserved: 0 } }))
-  await page.route('**/api/credits/quote', (route) => { quotes++; quoteInputs.push(route.request().postDataJSON()); return route.fulfill({ json: { points: 124, priceVersion: 'apimart-test-v1' } }) })
+  await page.route('**/api/credits/quote', (route) => { const input = route.request().postDataJSON(); quotes++; quoteInputs.push(input); return route.fulfill({ json: { points: input.model === 'muse-video-ext' ? 6 : 124, priceVersion: 'apimart-test-v1' } }) })
   await page.route('**/api/persistence/config', (route) => route.fulfill({ json: { enabled: true } }))
   await page.route('**/api/assets/content?*', (route) => { const video = route.request().url().includes('key=output') || ((reference === 'video' || reference === 'mixed') && route.request().url().includes('key=source')); return route.fulfill({ body: video ? mp4 : png, contentType: video ? 'video/mp4' : 'image/png' }) })
   await page.route('**/api/canvases**', (route) => {
@@ -163,6 +163,34 @@ async function chooseMode(page: Page, name: string) {
   await page.getByRole('button', { name: /^选择视频生成类型/ }).click()
   await page.getByRole('option', { name: new RegExp(`^${name}`) }).click()
 }
+
+test('Muse Video 保留默认有声且隐藏音频开关，按次报价并提交参考图', async ({ page }) => {
+  const state = await setup(page, 'image')
+  await chooseModel(page, 'Muse Video')
+  await editor(page).fill('Make the boat move slowly.')
+  await page.getByRole('button', { name: /^视频参数，/ }).click()
+  const dialog = page.getByRole('dialog', { name: '视频参数' })
+  await expect(dialog.getByRole('checkbox', { name: '生成音频' })).toHaveCount(0)
+  await expect(dialog.getByRole('group', { name: '生成音频' })).toHaveCount(0)
+  await expect(dialog).toContainText('720P')
+  await expect(dialog).toContainText('10')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.credit-cost-trigger')).toHaveText('6')
+  await generate(page).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  expect(state.submissions[0]).toMatchObject({ model: 'muse-video-ext', mode: 'reference', duration: 10, resolution: '720p', generateAudio: true, acceptedPoints: 6, parameters: { aspect_ratio: 'auto', n: 1, audio: true }, references: [{ nodeId: sourceID, assetKey: 'source', kind: 'image' }] })
+  await expect(page.getByRole('article', { name: '中转站视频', exact: true }).locator('video')).toHaveJSProperty('readyState', 4)
+})
+
+test('Muse Video 参考图片超过 11 MiB 时不报价或提交', async ({ page }) => {
+  const state = await setup(page, 'image', 2, true, { width: 854, height: 480 }, 11 * 1024 * 1024 + 1)
+  await chooseModel(page, 'Muse Video')
+  await editor(page).fill('Make the boat move slowly.')
+  await expect(page.getByText(/参考图片大小无效或总大小超过 11 MiB/)).toBeVisible()
+  await expect(generate(page)).toBeDisabled()
+  expect(state.submissions).toHaveLength(0)
+  expect(state.quoteInputs.filter((input) => input.model === 'muse-video-ext')).toHaveLength(0)
+})
 
 test('统一三项功能按型号置灰，尚未接入的专用工作流型号不进入列表', async ({ page }) => {
   await setup(page)

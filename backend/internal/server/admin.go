@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func registerAdmin(router *gin.Engine, db *persistence.Store) {
+func registerAdmin(router *gin.Engine, db *persistence.Store, store AssetStore) {
 	api := router.Group("/api/admin")
 	api.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
@@ -20,6 +20,7 @@ func registerAdmin(router *gin.Engine, db *persistence.Store) {
 		}
 		c.Next()
 	})
+	registerPromptAdmin(api, store, db)
 	api.GET("/me", func(c *gin.Context) {
 		session, _ := c.Get("session")
 		mcpConfig, _ := MCPConfigFromEnv()

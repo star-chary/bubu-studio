@@ -62,6 +62,13 @@ func (s *Store) RunWorker(parent context.Context, generator Generator, objects R
 		ready <- err
 		return err
 	}
+	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks child SET status='interrupted',error=parent.error,finished_at=now(),updated_at=now()
+		FROM generation_tasks parent WHERE child.input->>'batchParentTaskId'=parent.id::text AND child.status='queued'
+		AND parent.status='interrupted' AND parent.error->>'code'='SUBMISSION_UNKNOWN'`)
+	if err != nil {
+		ready <- err
+		return err
+	}
 	// Preparation never calls a paid model; it is safe to queue again. All old
 	// claims belong to the previous lock owner, which has now stopped.
 	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET claimed_at=NULL,
@@ -201,9 +208,10 @@ func (s *Store) finish(ctx context.Context, id, status string, result *Result, f
 		}
 		defer tx.Rollback(context.Background())
 		var oldStatus, kind, creditStatus, userID string
+		var input Input
 		var points int64
-		if err = tx.QueryRow(c, `SELECT t.status,t.kind,t.credit_status,t.credit_points,cv.owner_user_id::text
-			FROM generation_tasks t JOIN canvases cv ON cv.id=t.canvas_id WHERE t.id=$1 FOR UPDATE OF t`, id).Scan(&oldStatus, &kind, &creditStatus, &points, &userID); err != nil {
+		if err = tx.QueryRow(c, `SELECT t.status,t.kind,t.credit_status,t.credit_points,cv.owner_user_id::text,t.input
+			FROM generation_tasks t JOIN canvases cv ON cv.id=t.canvas_id WHERE t.id=$1 FOR UPDATE OF t`, id).Scan(&oldStatus, &kind, &creditStatus, &points, &userID, &input); err != nil {
 			return err
 		}
 		if oldStatus != "queued" && oldStatus != "preparing" && oldStatus != "submitting" && oldStatus != "running" && oldStatus != "saving" {
@@ -218,7 +226,23 @@ func (s *Store) finish(ctx context.Context, id, status string, result *Result, f
 		if _, err = tx.Exec(c, `UPDATE generation_tasks SET status=$2,result=COALESCE($3,result),error=$4,finished_at=now(),updated_at=now() WHERE id=$1`, id, status, result, failure); err != nil {
 			return err
 		}
-		if err = completeTaskCredits(c, tx, id, userID, creditStatus, creditCompletion(kind, oldStatus, status, result, failure), points); err != nil {
+		batchParent := input.BatchParentTaskID
+		if nanoBatchCount(input) > 0 && len(input.OutputNodeIDs) > 0 {
+			batchParent = id
+			if status != "succeeded" {
+				if _, err = tx.Exec(c, `UPDATE generation_tasks SET status=$2,error=$3,finished_at=now(),updated_at=now()
+					WHERE input->>'batchParentTaskId'=$1 AND status='queued'`, id, status, failure); err != nil {
+					return err
+				}
+				batchParent = "" // A definite provider rejection releases the one reservation.
+			}
+		}
+		if batchParent != "" {
+			err = completeImageBatchCredits(c, tx, batchParent)
+		} else {
+			err = completeTaskCredits(c, tx, id, userID, creditStatus, creditCompletion(kind, oldStatus, status, result, failure), points)
+		}
+		if err != nil {
 			return err
 		}
 		return tx.Commit(c)

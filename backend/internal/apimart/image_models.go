@@ -3,6 +3,7 @@ package apimart
 import (
 	_ "embed"
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -12,9 +13,11 @@ import (
 var imageModelsJSON []byte
 
 type ImageModelDefinition struct {
-	ModelID            string           `json:"modelId"`
-	MaxReferenceImages int              `json:"maxReferenceImages"`
-	Parameters         []VideoParameter `json:"parameters"`
+	ModelID                 string           `json:"modelId"`
+	MaxReferenceImages      int              `json:"maxReferenceImages"`
+	MaxReferenceBytes       int64            `json:"maxReferenceBytes"`
+	MaxSingleReferenceBytes int64            `json:"maxSingleReferenceBytes"`
+	Parameters              []VideoParameter `json:"parameters"`
 }
 
 var imageModels = func() map[string]ImageModelDefinition {
@@ -32,6 +35,16 @@ var imageModels = func() map[string]ImageModelDefinition {
 func ImageDefinition(id string) (ImageModelDefinition, bool) {
 	m, ok := imageModels[id]
 	return m, ok
+}
+
+// ImageDefinitions provides a stable read-only list for the MCP model catalog.
+func ImageDefinitions() []ImageModelDefinition {
+	items := make([]ImageModelDefinition, 0, len(imageModels))
+	for _, model := range imageModels {
+		items = append(items, model)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ModelID < items[j].ModelID })
+	return items
 }
 
 type ImageRequest struct {

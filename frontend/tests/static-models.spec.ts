@@ -44,8 +44,8 @@ async function parameters(page: Page, kind: 'image' | 'video') {
 }
 
 test('固定清单只包含采纳的主力与候选，基础参数都有文档来源和合法初值', () => {
-  expect(catalogModelsFor('image')).toHaveLength(6)
-  expect(catalogModelsFor('video')).toHaveLength(23)
+  expect(catalogModelsFor('image')).toHaveLength(9)
+  expect(catalogModelsFor('video')).toHaveLength(24)
   expect(new Set(STATIC_MODELS.map((model) => model.optionId)).size).toBe(STATIC_MODELS.length)
   expect(STATIC_MODELS.filter((model) => model.modelId === 'midjourney').map((model) => model.optionId)).toEqual([
     'midjourney-8.2', 'midjourney-8.1', 'midjourney-7', 'midjourney-niji7',
@@ -115,7 +115,7 @@ test('初次打开与过期缓存均不请求目录，所有固定型号都能�
     for (const model of catalogModelsFor(kind)) {
       await choose(page, model.optionId)
       const dialog = await parameters(page, kind)
-      await expect(dialog.locator('fieldset')).toHaveCount(model.parameters!.parameters.length)
+      await expect(dialog.locator('fieldset')).toHaveCount(model.parameters!.parameters.filter((field) => !field.hidden).length)
       await expect(dialog.locator('details')).toHaveCount(0)
       await expect(dialog).not.toContainText('可选范围未提供')
       await expect(dialog).not.toContainText('更多设置')
@@ -132,7 +132,7 @@ test('有价格疑义的图片型号从菜单隐藏，历史草稿保留', async
   const original: ModelSelection = { provider: 'apimart', modelId: 'midjourney', parameters: { version: '8.2', niji: false, hd: true } }
   const db = await setupCanvas(page, 'image', original)
   await selector(page).click()
-  for (const id of ['midjourney-8.2', 'midjourney-niji7', 'gemini-nano-banana-2.1', 'gpt-image-2.5-flare', 'flux-2-flex']) {
+  for (const id of ['midjourney-8.2', 'midjourney-niji7', 'gpt-image-2.5-flare', 'flux-2-flex']) {
     await expect(page.locator(`[data-model-option="${id}"]`)).toHaveCount(0)
   }
   await page.keyboard.press('Escape')

@@ -1,6 +1,6 @@
 # BuBu-后台管理
 
-独立 Vue 3 / TypeScript / Vite 项目，与 `frontend/`、`backend/` 并列。提供管理员登录、用户搜索与分页、测试积分发放和积分记录。复用现有 Go 服务与 PostgreSQL。
+独立 Vue 3 / TypeScript / Vite 项目，与 `frontend/`、`backend/` 并列。提供管理员登录、用户搜索与分页、测试积分发放、积分记录及提示词与图片管理。复用现有 Go 服务、PostgreSQL 与 OSS；提示词库本地实现及上线条件见 [提示词库](../docs/prompt-library.md)。
 
 ## 本地启动
 

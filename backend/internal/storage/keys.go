@@ -55,6 +55,18 @@ func NewKeyBuilder(prefix, environment string) (*KeyBuilder, error) {
 	return &KeyBuilder{root: prefix + "/" + environment}, nil
 }
 
+func (b *KeyBuilder) NewPromptImageKey(promptID, imageID, extension string) (string, error) {
+	if !uuid.MatchString(promptID) || !uuid.MatchString(imageID) {
+		return "", fmt.Errorf("提示词或图片 ID 无效")
+	}
+	for _, media := range allowedMedia {
+		if media.kind == Image && media.extension == extension {
+			return fmt.Sprintf("%s/prompt-library/%s/%s%s", b.root, promptID, imageID, extension), nil
+		}
+	}
+	return "", fmt.Errorf("不支持的图片格式")
+}
+
 // NewKey always allocates a new object. Regeneration never overwrites old files.
 // The caller must derive extension from validated media content, not its name.
 func (b *KeyBuilder) NewKey(scope Scope, source Source, kind Kind, extension string) (string, error) {

@@ -17,7 +17,7 @@ func enabledAPIMartImageNode(node Node) bool {
 }
 
 func normalizeAPIMartImageInput(in *Input) error {
-	if in.Provider != ProviderAPIMart || in.ImageOptions != nil || len(in.References) != 0 || !ValidID(in.CanvasID) || !ValidID(in.NodeID) || utf8.RuneCountInString(strings.TrimSpace(in.Prompt)) > 2000 {
+	if in.Provider != ProviderAPIMart || in.ImageOptions != nil || len(in.References) != 0 || in.BatchParentTaskID != "" || (in.Model != "gemini-nano-banana-2.1" && len(in.OutputNodeIDs) != 0) || !ValidID(in.CanvasID) || !ValidID(in.NodeID) || utf8.RuneCountInString(strings.TrimSpace(in.Prompt)) > 2000 {
 		return ErrInvalid
 	}
 	request := apimart.ImageRequest{Prompt: in.Prompt, Model: in.Model, Parameters: in.Parameters}

@@ -37,8 +37,9 @@ func NewRouter(generator imageGenerator, store AssetStore, db *persistence.Store
 	registerAssets(router, store, db)
 	registerPersistence(router, db)
 	registerCredits(router, db)
-	registerAdmin(router, db)
-	registerMCP(router, db, cfg)
+	registerPrompts(router, store, db)
+	registerAdmin(router, db, store)
+	registerMCP(router, db, store, cfg)
 
 	return router
 }

@@ -8,7 +8,7 @@ const emit = defineEmits<{ update: [key: string, value: unknown]; resize: [] }>(
 const root = ref<HTMLElement | null>(null)
 const order: Record<string, number> = { ratio: 0, resolution: 1, duration: 2, count: 3, audio: 4 }
 const fields = computed(() => (props.model.parameters?.parameters ?? [])
-  .filter((parameter) => parameter.role in order)
+  .filter((parameter) => !parameter.hidden && parameter.role in order)
   .sort((a, b) => order[a.role]! - order[b.role]!))
 let observer: ResizeObserver | undefined
 onMounted(() => {

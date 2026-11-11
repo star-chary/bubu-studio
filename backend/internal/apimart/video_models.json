@@ -1,5 +1,26 @@
 [
   {
+    "modelId": "muse-video-ext",
+    "name": "Muse Video",
+    "group": "primary",
+    "document": "https://docs.apimart.ai/cn/api-reference/videos/muse-video-ext/generation",
+    "generationEnabled": true,
+    "modes": ["text", "reference"],
+    "maxReferenceImages": 9,
+    "maxReferenceBytes": 11534336,
+    "referenceInput": "image_urls",
+    "referenceTag": "图片{n}",
+    "omitAutoRatio": true,
+    "omitParameters": ["audio"],
+    "parameters": [
+      {"key": "aspect_ratio", "label": "比例", "role": "ratio", "kind": "enum", "enum": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], "default": "auto", "optionLabels": {"auto": "自动比例"}, "note": "自动：有参考图时跟随参考图比例，无参考图时为 16:9。", "required": false},
+      {"key": "resolution", "label": "清晰度", "role": "resolution", "kind": "fixed", "fixed": "720p", "required": false},
+      {"key": "duration", "label": "视频时长", "role": "duration", "kind": "fixed", "fixed": 10, "required": false},
+      {"key": "n", "label": "生成数量", "role": "count", "kind": "fixed", "fixed": 1, "hidden": true, "required": false},
+      {"key": "audio", "label": "生成音频", "role": "audio", "kind": "fixed", "fixed": true, "hidden": true, "required": false}
+    ]
+  },
+  {
     "modelId": "seedance-2.5",
     "name": "Seedance 2.5",
     "group": "primary",

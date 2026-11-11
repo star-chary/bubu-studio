@@ -1,6 +1,10 @@
 {
-  "version": "apimart-2026-11-07-v3",
+  "version": "apimart-2026-11-11-v7",
   "images": {
+    "seedream-5-5": { "rates": { "1K": 130000, "1.5K": 130000, "2K": 227500 }, "referenceRate": 52000 },
+    "gemini-nano-banana-2.1-ext": { "rates": { "1K": 120000, "2K": 140000, "4K": 180000 } },
+    "gemini-nano-banana-2.1": { "rates": { "1K": 268800, "2K": 403200, "4K": 907200 } },
+    "muse-image-ext": { "rates": { "DEFAULT": 48000 } },
     "seedream-5-0-lite": { "rates": { "2K": 280000, "3K": 280000, "4K": 280000 } },
     "seedream-5-0-pro": { "rates": { "1K": 292500, "1.5K": 292500, "2K": 585000 }, "freeReferences": 1, "referenceRate": 19500 },
     "flux-3-image": { "rates": { "768SQ": 328000, "1K": 384000, "1.5K": 560000, "2K": 800000, "4K": 4856000 } },
@@ -9,6 +13,7 @@
     "z-image-turbo": { "rates": { "1K": 100000, "2K": 100000 } }
   },
   "videos": {
+    "muse-video-ext": { "billingUnit": "generation", "rates": { "720P": 240000 } },
     "seedance-2.5": { "rates": { "480P": 960800, "720P": 2160000, "1080P": 5346000 }, "videoInputRates": { "480P": 576000, "720P": 1296000, "1080P": 3192000 } },
     "seedance-2.0": { "rates": { "480P": 660000, "720P": 1420000, "1080P": 3544000, "4K": 7220000 }, "videoInputRates": { "480P": 400000, "720P": 858400, "1080P": 2156800, "4K": 4443200 } },
     "seedance-2.0-fast": { "rates": { "480P": 398400, "720P": 856000 }, "videoInputRates": { "480P": 236800, "720P": 512800 } },

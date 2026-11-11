@@ -123,6 +123,9 @@ func (c *Client) CreateVideo(ctx context.Context, in ark.VideoRequest) (string, 
 	req.GetBody = nil
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	if in.Model == "muse-video-ext" && in.TaskID != "" {
+		req.Header.Set("Idempotency-Key", in.TaskID)
+	}
 	req, trace := traceSubmission(req)
 	// Submit once. A timeout or invalid success response cannot prove rejection.
 	unknown := &ark.APIError{Status: 502, Code: "SUBMISSION_UNKNOWN", Message: "无法确认中转站是否已受理视频，已保留任务记录，请核查后再试，未自动重新提交。"}

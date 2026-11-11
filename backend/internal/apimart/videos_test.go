@@ -17,6 +17,67 @@ func validInput() ark.VideoRequest {
 	return ark.VideoRequest{TaskID: "local-task", Model: VideoModel, Prompt: "A paper boat moves slowly", Mode: "text", Resolution: "720p", Ratio: "16:9", Duration: 5, GenerateAudio: true}
 }
 
+func TestMuseVideoRequestUsesDocumentedDefaultsAndIdempotencyKey(t *testing.T) {
+	for _, mode := range []string{"text", "reference"} {
+		t.Run(mode, func(t *testing.T) {
+			calls := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Header.Get("Idempotency-Key") != "muse-task" {
+					t.Error("missing task idempotency key")
+				}
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if body["model"] != "muse-video-ext" || body["n"] != float64(1) || body["duration"] != float64(10) || body["resolution"] != "720p" || body["aspect_ratio"] != nil || body["audio"] != nil {
+					t.Fatalf("unexpected Muse payload: %+v", body)
+				}
+				if mode == "reference" && fmt.Sprint(body["image_urls"]) != "[https://assets.example.test/ref.png]" {
+					t.Fatal("reference image not sent", body)
+				}
+				if mode == "text" && body["image_urls"] != nil {
+					t.Fatal("text request sent references", body)
+				}
+				fmt.Fprint(w, `{"code":200,"data":[{"task_id":"muse_provider_task"}]}`)
+			}))
+			defer srv.Close()
+			client := newTestClient(t)
+			client.baseURL = srv.URL
+			in := ark.VideoRequest{TaskID: "muse-task", Model: "muse-video-ext", Mode: mode, Prompt: "A paper boat", Parameters: map[string]any{}}
+			if mode == "reference" {
+				in.References = []ark.VideoReference{{Kind: "image", URL: "https://assets.example.test/ref.png"}}
+			}
+			id, err := client.CreateVideo(context.Background(), in)
+			if err != nil || id != "muse_provider_task" || calls != 1 {
+				t.Fatal(id, err, calls)
+			}
+		})
+	}
+	for _, parameters := range []map[string]any{{"audio": false}, {"duration": 5}, {"resolution": "1080p"}, {"n": 2}} {
+		if _, ok := videoPayload(ark.VideoRequest{Model: "muse-video-ext", Mode: "text", Prompt: "scene", Parameters: parameters}); ok {
+			t.Fatalf("invalid Muse parameters accepted: %+v", parameters)
+		}
+	}
+	in := ark.VideoRequest{Model: "muse-video-ext", Mode: "text", Prompt: "scene", Parameters: map[string]any{"aspect_ratio": "9:16"}}
+	payload, ok := videoPayload(in)
+	if !ok || payload["aspect_ratio"] != "9:16" {
+		t.Fatalf("explicit Muse ratio was not sent: %+v", payload)
+	}
+	refs := make([]ark.VideoReference, 10)
+	for i := range refs {
+		refs[i] = ark.VideoReference{Kind: "image", URL: fmt.Sprintf("https://assets.example.test/%d.png", i)}
+	}
+	in.Mode, in.References = "reference", refs[:9]
+	if _, ok := videoPayload(in); !ok {
+		t.Fatal("nine references should be accepted")
+	}
+	in.References = refs
+	if _, ok := videoPayload(in); ok {
+		t.Fatal("more than nine references should be rejected")
+	}
+}
+
 func TestVideoSubmissionAndResultUseAPIMartContract(t *testing.T) {
 	for _, mode := range []string{"text", "reference"} {
 		t.Run(mode, func(t *testing.T) {

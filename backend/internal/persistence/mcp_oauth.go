@@ -120,10 +120,10 @@ func (s *OAuthStore) Create(ctx context.Context, info oauth2.TokenInfo) error {
 		return err
 	}
 	tag, err := q.Exec(ctx, `INSERT INTO mcp_oauth_tokens(token_hash,kind,client_id,user_id,metadata,expires_at)
-		SELECT $1,$2,$3,id,$5,$6 FROM users WHERE id=$4 AND role='admin' AND status='active'`,
+		SELECT $1,$2,$3,id,$5,$6 FROM users WHERE id=$4 AND status='active'`,
 		identity.TokenHash(secret), kind, info.GetClientID(), info.GetUserID(), raw, expires)
 	if err == nil && tag.RowsAffected() != 1 {
-		return ErrAdminRequired
+		return ErrSession
 	}
 	return err
 }
@@ -136,7 +136,7 @@ func (s *OAuthStore) get(ctx context.Context, secret, kind string) (oauth2.Token
 	err := s.queries(ctx).QueryRow(ctx, `SELECT t.metadata FROM mcp_oauth_tokens t
 		JOIN users u ON u.id=t.user_id JOIN mcp_oauth_clients c ON c.id=t.client_id
 		WHERE t.token_hash=$1 AND t.kind=$2 AND t.revoked_at IS NULL AND t.expires_at>now()
-		AND c.expires_at>now() AND u.role='admin' AND u.status='active'`, identity.TokenHash(secret), kind).Scan(&raw)
+		AND c.expires_at>now() AND u.status='active'`, identity.TokenHash(secret), kind).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -179,11 +179,11 @@ type OAuthConnection struct {
 	ExpiresAt time.Time
 }
 
-func (s *OAuthStore) Connections(ctx context.Context, userID string) ([]OAuthConnection, error) {
+func (s *OAuthStore) Connections(ctx context.Context, userID, scope string) ([]OAuthConnection, error) {
 	rows, err := s.DB.Pool.Query(ctx, `SELECT c.id,c.name,max(t.created_at),max(t.expires_at)
 		FROM mcp_oauth_tokens t JOIN mcp_oauth_clients c ON c.id=t.client_id
-		WHERE t.user_id=$1 AND t.revoked_at IS NULL AND t.expires_at>now() AND c.expires_at>now()
-		GROUP BY c.id,c.name ORDER BY max(t.created_at) DESC LIMIT 100`, userID)
+		WHERE t.user_id=$1 AND t.revoked_at IS NULL AND t.expires_at>now() AND c.expires_at>now() AND t.metadata->>'Scope'=$2
+		GROUP BY c.id,c.name ORDER BY max(t.created_at) DESC LIMIT 100`, userID, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -204,19 +204,4 @@ func (s *OAuthStore) RevokeClient(ctx context.Context, userID, clientID string) 
 		_, err := s.queries(ctx).Exec(ctx, `UPDATE mcp_oauth_tokens SET revoked_at=now() WHERE user_id=$1 AND client_id=$2 AND revoked_at IS NULL`, userID, clientID)
 		return err
 	})
-}
-
-// Both HTTP and MCP supply a server-verified actor, never a caller-provided role.
-func (s *Store) AdminUsersForActor(ctx context.Context, actorID, query string, limit, offset int) ([]AdminUser, int64, error) {
-	if !ValidID(actorID) {
-		return nil, 0, ErrAdminRequired
-	}
-	var allowed bool
-	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin' AND status='active')`, actorID).Scan(&allowed); err != nil {
-		return nil, 0, err
-	}
-	if !allowed {
-		return nil, 0, ErrAdminRequired
-	}
-	return s.AdminUsers(ctx, query, limit, offset)
 }

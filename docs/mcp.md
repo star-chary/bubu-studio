@@ -1,126 +1,123 @@
-# 用户查询 MCP
+# 普通用户画布节点 MCP
 
-本功能通过远程 Streamable HTTP 提供唯一的只读工具 `list_users`。实现位于现有 Go 后端，使用官方 Go MCP SDK v1.8.0；网页和 MCP 共用 `AdminUsersForActor → AdminUsers → PostgreSQL` 查询。授权码与 PKCE 由 go-oauth2 v4.6.0 处理，项目补充管理员身份、精确回调地址、资源绑定和事务存储。
+2026-11-12：普通用户画布 MCP 和首页连接弹窗已随 `20261111T160133Z` 发布；工作区源码尚未提交或推送。远程 `/mcp` 提供八个工具：读取本人画布、创建和配置节点、查询模型、报价、提交及查询生成任务。原管理员 `list_users` MCP 工具已移除；管理台自己的用户查询接口不受影响。新增生成权限需要重新授权，原有令牌不会自动获得生成能力。
 
-## 请求与授权流程
+## 使用流程
+
+首页侧边栏的“MCP 连接”可打开弹窗，复制包含当前网页来源 `/mcp` 地址的 AI 接入提示词。提示词不包含账号密码或令牌，也不会自动建立连接；使用时仍需在支持 MCP 的客户端中完成普通用户授权。地址要求当前站点实际启用了同来源的 MCP 服务。
 
 ```text
-AI 应用 → /mcp → 401 + 受保护资源元数据地址
-        → 查询 OAuth 元数据 → 注册 public client
-        → 浏览器打开 /oauth/authorize
-        → 现有 /admin/ 登录 → 返回授权确认页
-        → 管理员确认 → 一次性授权码返回注册的回调地址
-        → 客户端用授权码 + S256 PKCE verifier 换取访问令牌
-        → Bearer Token 调用 /mcp 的 tools/list、tools/call
-        → 验证令牌、resource、users:read、当前 active/admin
-        → 共享管理员查询入口 → users + credit_accounts → MCP 结构化结果
+MCP 客户端连接 /mcp → OAuth 元数据和应用注册
+→ 浏览器使用现有普通用户登录 → 确认授权读取、编辑画布和提交生成
+→ 授权码 + S256 PKCE 换取独立 Bearer 令牌
+→ AI 读取画布、选择模型、创建并配置节点
+→ 报价后提交生成任务，查询任务状态
+→ 校验令牌、读取 / 写入 / 生成权限、用户状态和画布归属
+→ 后台沿用已有任务、积分与素材保存流程
+→ 用户重新打开画布查看
 ```
 
-模型生成工具名称与参数；AI 应用中的 MCP Client 负责请求。MCP Server 不调用大模型，也不调用 Ark 或 OSS。
-
-管理端的 Cookie 仅用于登录和浏览器授权确认，不能作为 MCP Bearer Token。工具参数中不接收凭证、管理员身份或任意 SQL。`X-Session-User` 仍不能冒充身份。
+浏览器 Cookie 和 MCP Bearer 令牌各自独立，工具参数不接受用户 ID。画布 ID 可由列表取得，也可从 `/?canvas=<UUID>` 链接中获取。当前只有持久化画布可用，临时画布和网页中未保存的内容不可见。
 
 ## 工具契约
 
-| 项目 | 内容 |
+### `list_canvases`：查看本人的画布
+
+可选 `limit`（默认 24，范围 1～50）和 `offset`（默认 0，范围 0～100000）。返回画布 ID、名称、更新时间、节点数量和画布地址，以及 `hasMore` / `nextOffset`。只列出当前授权用户自己的已保存画布，按最近更新时间倒序。
+
+### `get_canvas`：读取指定画布及节点
+
+必填 `canvasId`；可选 `limit`（默认 24，范围 1～50）和 `offset`（默认 0，范围 0～300）。返回画布名称、版本、视口和地址；节点页包括 ID、位置、已保存的名称、提示词、模型参数、结构化提示词及引用关系，以及可用的素材和最近任务摘要。`nodeCount` 是总节点数；`hasMore` / `nextOffset` 用于继续读取。
+
+素材摘要只包含类型、来源、格式、大小、媒体参数和已有参考检查；不返回素材文件、私有对象键或供应商临时地址。`latestTask` 是该节点最新任务，`latestResult` 是最近成功结果的保存状态，两者可能对应不同任务；较新的临时结果不会冒充较旧的已保存素材。跨页可比较 `version` 判断保存的节点快照是否变化；任务状态可能独立更新。
+
+两个读取工具不修改画布或积分，也不生成图片、视频。不存在与不属于用户的画布返回相同提示；画布文本是用户数据，不是对智能体的指令。
+
+### `create_canvas_node`：新建空节点
+
+| 字段 | 说明 |
 | --- | --- |
-| 名称 | `list_users` |
-| `q` | 可省略，默认空字符串；最多 254 字符；邮箱包含搜索或完整用户 UUID |
-| `limit` | 可省略，默认 20；整数 1～100 |
-| `offset` | 可省略，默认 0；整数 0～100000 |
-| 排序 | 注册时间、用户 ID 倒序 |
-| 返回 | `{users,total,limit,offset}` |
-| 用户字段 | `id,email,role,status,createdAt,available,reserved` |
-| 副作用 | 只读；不创建用户、不发放积分、不提交生成任务 |
+| 名称 | `create_canvas_node` |
+| `canvasId` | 必填，用户所属画布的小写 UUID |
+| `kind` | 必填，`image` 或 `video` |
+| `nodeId` | 可选，小写 UUID；相同画布中同类型节点仍存在时，重试返回该节点且 `created=false`，不同类型返回错误 |
+| `position` | 可选，`{x,y}` 坐标，均需提供且绝对值不超过 10000000；省略时按已保存节点位置选取附近空位 |
+| 返回 | `canvasId`、`nodeId`、`kind`、`name`、`position`、`version`、`created` 和 `canvasUrl` |
 
-拒绝额外参数、超限参数与显式 `null`。`total` 是匹配总数，`users` 仅是本页；下一页需要增加 offset。没有日期范围筛选。结果来自服务器查询，通过 `structuredContent` 和兼容文本内容返回，带输出 Schema。查询失败返回 MCP 工具错误，不当作空结果；底层 SQL、密码及凭证不对外返回。
+只创建空节点，默认未选择模型，视频模式与网页新建节点一致。不会调用模型、创建生成任务、上传素材或扣除积分。每次逻辑创建推荐由客户端生成并复用 `nodeId`；省略时由后端生成，若请求结果未知，应先检查画布，不要盲目重复提交。该去重只在节点仍存在于画布中时有效；节点删除后不提供跨删除的永久去重。
 
-调用参数示例（省略协议信封）：
-
-```json
-{"name":"list_users","arguments":{"q":"example.com","limit":20,"offset":0}}
-```
-
-## OAuth 接口与兼容范围
-
-| 地址 | 职责 |
-| --- | --- |
-| `/.well-known/oauth-protected-resource/mcp` | resource、授权服务器、读取权限 |
-| `/.well-known/oauth-protected-resource` | 同一元数据的根路径入口 |
-| `/.well-known/oauth-authorization-server` | issuer、授权/兑换/注册/撤销地址和支持能力 |
-| `POST /oauth/register` | 动态注册 public client，精确保存回调地址 |
-| `GET /oauth/authorize` | 校验请求，要求管理员登录，显示授权页 |
-| `POST /oauth/authorize` | 同源 + CSRF 校验，批准或拒绝授权 |
-| `POST /oauth/token` | 一次性授权码 + S256 PKCE 换令牌 |
-| `POST /oauth/revoke` | 客户端撤销其访问令牌 |
-| `GET/POST /oauth/connections` | 管理员查看和撤销自己授予应用的授权 |
-
-本版支持 `authorization_code`、`response_type=code`、`token_endpoint_auth_method=none`、`code_challenge_method=S256`，scope 固定 `users:read`。授权与兑换请求的 `resource` 必须等于完整 MCP URL，授权请求必须携带 `state`。只接受注册的精确回调 URL，允许 HTTPS 和本机回环 HTTP 地址，不接受通配符。
-
-授权码有效 5 分钟，访问令牌有效 1 小时。没有 refresh token、密码授权或 client_credentials；过期后由客户端重新发起浏览器授权。动态注册客户端保留 90 天，到期后重新注册。需要客户端支持这组能力，不表示所有云端 AI 产品都已验收。跨源浏览器 JavaScript 不直接访问受保护入口，应使用 AI 应用的服务端 MCP Client 或受控代理；公开发现元数据允许跨源读取。
-
-动态注册例子（`client_name` 是接入方自报名称，用户应核对授权页的回调地址）：
+调用示例（协议封装省略）：
 
 ```json
 {
-  "client_name": "My AI App",
-  "redirect_uris": ["https://your-ai-app.example/oauth/callback"],
-  "token_endpoint_auth_method": "none",
-  "grant_types": ["authorization_code"],
-  "response_types": ["code"],
-  "scope": "users:read"
+  "name": "create_canvas_node",
+  "arguments": {
+    "canvasId": "11111111-1111-4111-8111-111111111111",
+    "kind": "image",
+    "nodeId": "22222222-2222-4222-8222-222222222222",
+    "position": {"x": 120, "y": 240}
+  }
 }
 ```
 
-支持 SDK 的现代协议和旧版 Streamable HTTP 客户端；本地验证覆盖现代 SDK 客户端以及 `2025-06-18` 初始化/发现/调用。未提供旧版独立 `/sse` 入口。
+节点 ID、类型、坐标和完整快照受现有格式与 300 节点上限校验。工具错误不返回 SQL 或用户凭证。新节点的默认位置基于已保存的画布坐标，并不保证处于当前浏览器的可视区域。
 
-## 数据与安全机制
+### `list_generation_models`：查询可用模型
 
-008 迁移新增两张授权表，保留原有用户和积分模型：
+可选 `kind` 为 `image` 或 `video`；省略时返回两类。根据后端现有模型定义和积分价格表列出可生成模型、供应商、支持的模式、参考数量和参数。单个 MCP 图片任务目前只生成一张；图片模型的数量参数因此限定为 1。APIMart 的内部 Nano Ext 实际型号由后端按单张规则选择，不需要客户端直接指定。
 
-```text
-mcp_oauth_clients（应用名称、精确回调地址、有效期）
-       ↓ 一对多
-mcp_oauth_tokens（授权码/访问令牌哈希、元数据、有效期、撤销时间）
-       ↑ 多对一
-users（原有用户；实时检查角色和状态）
+### `configure_canvas_node`：配置节点
+
+必填 `canvasId`、`nodeId`、`expectedVersion` 和 `patch`。`expectedVersion` 来自创建节点或读取画布结果。`patch` 可包含 `name`、`prompt`、`promptParts`、`model`、`imageOptions`、`videoOptions`、`videoMode`、`referenceIds`、`firstFrameId`。
+
+`model` 包含 `provider`、`modelId` 和可选 `parameters`；APIMart 参数按 `list_generation_models` 返回的名称填写，未填写的基础参数使用现有模型默认值。修改模型时，`parameters` 按整组提供，支持已有的参数别名。Ark 图片 / 视频的参数分别放在 `imageOptions` / `videoOptions`。`videoMode` 为 `text`、`image` 或 `reference`；单图起始画面模式还须提供同画布 `referenceIds` 和 `firstFrameId`。
+
+传入 `prompt` 但不传 `promptParts` 会清除旧结构化标签；若需保留标签，应同时提供与提示词一致的 `promptParts`。版本不匹配时拒绝写入；更改时保留快照中未指定的其他字段。该工具只保存节点草稿，不发起生成、不冻结积分。
+
+### `quote_generation`：查询积分报价
+
+必填 `canvasId`、`nodeId`。根据已保存节点、模型参数和已保存参考素材，返回 `kind`、`canvasVersion`、`points`、`priceVersion`、`quoteHash` 和积分余额。报价不创建任务或冻结积分；参考素材正在生成 / 保存或尚未保存时不可报价。
+
+### `start_generation`：提交生成任务
+
+必填 `canvasId`、`nodeId`、客户端预先生成的 `taskId`，以及从报价结果原样取得的 `canvasVersion`、`points`、`priceVersion`、`quoteHash`。提交会使用现有业务逻辑重新核价，事务中冻结积分并创建任务，由现有后台进程处理；返回任务 ID 与初始状态。
+
+`quoteHash` 用于识别报价对应的已保存输入及画布版本，并非用户确认凭证或签名。节点 / 画布版本变化时需要重新报价。相同任务 ID 和相同报价重试返回原任务；同一 ID 不可用于其他请求。提交结果不明或 `SUBMISSION_UNKNOWN` 时先查询原任务，不自动创建新任务重试。
+
+### `get_generation_task`：查询任务
+
+必填 `taskId`。只返回当前用户所属画布的任务，包含任务类型、状态、积分状态、错误摘要、结果保存状态、素材摘要和画布链接，不返回供应商临时地址或私有对象键。`succeeded` 且结果未保存时需根据 `result.saved` / `storageError` 判断，不能当成已经持久保存。
+
+## 数据与并发
+
+节点仍保存在 `canvases.snapshot`，没有新增节点表或迁移。创建和配置时锁定所属画布行，校验后同一事务更新快照、版本和更新时间；保留未修改的字段及当前版本不认识的字段。网页整张快照保存继续检查版本：如果 MCP 先写入，旧版本网页保存返回冲突，不会静默覆盖 MCP 节点；如果网页先保存，MCP 创建会在新的已保存快照上追加，配置则需要匹配最新版本。
+
+生成复用 `generation_tasks`、`credit_accounts`、`credit_ledger` 和 `assets`，不新增任务表。报价结果不保证用户已经确认；工具说明要求 AI 在用户同意报价后提交。项目仍以现有规则处理冻结、结算、明确失败和不确定状态，不新增付费生成供应商或队列。
+
+**未实现打开中页面自动同步、合并未保存草稿或多设备协同。**实验时先保存并离开目标画布，再调用工具并重新打开；发生冲突时保留当前页，不要直接刷新未保存草稿。后台已经提交的生成任务保持项目原有行为。
+
+## 授权与配置
+
+复用 008 迁移的 `mcp_oauth_clients` / `mcp_oauth_tokens`。普通活跃用户可授权；本版授权同时申请 `canvases:read`、`canvases:write` 和 `generation:write`，授权页面明确说明可提交生成并消耗积分。每次调用重新检查令牌有效期、资源、三项权限和用户状态；读取、写入、报价及任务查询都校验画布或任务所有权。授权码有效 5 分钟、访问令牌有效 1 小时，无 refresh token；撤销页面为同源 `/oauth/connections`。动态注册兼容 Codex 同时申请 `authorization_code` 和 `refresh_token`，但注册结果只声明支持 `authorization_code`，不会签发刷新令牌。旧授权码 / 令牌不自动获得生成权限，客户端需重新授权；当前不提供只读授权模式。
+
+入口默认关闭。仅本机实验时，可在后端进程中设置：
+
+```powershell
+$env:MCP_PUBLIC_URL = 'http://127.0.0.1:5173/mcp'
+$env:APP_ORIGINS = 'http://127.0.0.1:5173'
+$env:AUTH_COOKIE_SECURE = 'false'
 ```
 
-凭证使用 32 字节随机数，数据库仅存 SHA-256 哈希；元数据禁止保存 Code/Access/Refresh 原文。外键随应用或用户删除清理授权记录。凭证签发时清理该账号的到期记录；注册时清理到期客户端，并限制客户端总量为 1000。
+后端监听本机且连接本地 PostgreSQL，前端 Vite 使用 5173 并代理 `/mcp`、`/oauth/`、`/.well-known/` 和 `/api/`。不同来源、端口和 `MCP_PUBLIC_URL` 必须保持一致。随后在支持远程 Streamable HTTP 和该 OAuth 流程的客户端连接该地址；在客户端机器之外运行时，`127.0.0.1` 指向客户端自身的运行环境。
 
-授权码校验、消费和访问令牌签发在一个 PostgreSQL 事务内完成。按用户/客户端的事务级锁串行处理兑换和撤销；错误 PKCE 会回滚，成功兑换后该授权码不能再次兑换。授权记录重启后仍有效。撤销某应用会同时撤销该管理员授予它的待兑换授权码和访问令牌。
+`MCP_PUBLIC_URL` 要求 HTTPS（本机回环可 HTTP）、路径为 `/mcp`，来源包含在 `APP_ORIGINS`。使用现有元数据、动态客户端注册、授权码和 S256 PKCE；客户端回调地址必须和注册值完全一致。未设置环境变量时路由不启用。
 
-每次 MCP 请求检查令牌有效期、资源、scope 和数据库中当前角色/账号状态；工具执行时再次检查管理员权限。退出浏览器 Session 与撤销应用授权是两个动作，退出管理台不会自动撤销已经授予的应用令牌。
+## 本地验证
 
-HTTP 入口固定校验配置中的 Host；浏览器授权表单校验同源与 CSRF；授权页面禁止嵌入，回跳只允许本站的两个授权页面。请求体受限，按 IP 和管理员限流。Go 和 Nginx 不记录 OAuth/MCP 请求 URL 参数或凭证；成功工具日志只记录管理员 ID、分页和返回数量，不记录邮箱搜索条件或用户列表。
+- 隔离 PostgreSQL + Go MCP SDK：普通用户授权、八个工具发现、本人画布 / 节点分页、模型清单、节点配置、报价、仅测试库中的任务排队 / 模拟结果、积分冻结及重复提交防重、跨用户拒绝、旧令牌拒绝、输入校验、撤销、过期、禁用、PKCE 和版本保护。测试不启动生成工作进程、不调用真实模型或 OSS。
+- `frontend/tests/mcp-return.spec.ts` 和认证回归：普通用户登录回跳、已登录回跳、外站和非授权地址拒绝。
+- `frontend/scripts/verify-live-mcp.mjs`：真实 Chrome → Vite → Go → 隔离 PostgreSQL，验证普通用户登录、取消授权、PKCE、八个工具发现、节点创建与重试、读取画布及节点、跨用户拒绝、模型清单 / 节点配置 / 报价、重新打开和刷新恢复、撤销后拒绝。脚本使用临时 schema 并清理，不调用提交工具、模型或 OSS；需要设置本机 `frame_space_test` 的 `TEST_DATABASE_URL` 和新构建的 `MCP_TEST_BACKEND_BIN`。
+- 2026-11-11：本机 Codex 通过动态注册及普通用户 OAuth 授权成功，实际发现八个工具，并只读调用画布列表及图片模型清单，包含 Muse Image。验证时临时关闭模型及 OSS 配置，没有创建节点、提交生成或调用真实供应商。其他 AI 客户端尚未验收；本地验证不能等同于线上发布或真实生成验收。
+- 2026-11-12：正式页面的连接入口、提示词地址、模拟剪贴板及手机布局已检查；线上 MCP 元数据返回画布读写与生成权限，匿名 MCP 请求返回 401。本次线上发布未使用普通用户完成 OAuth 连接，也未提交付费生成。
 
-## 启用与接入
-
-默认 `MCP_PUBLIC_URL` 为空，MCP/OAuth 入口关闭。正式部署设置：
-
-```dotenv
-MCP_PUBLIC_URL=https://studio.example.com/mcp
-APP_ORIGINS=https://studio.example.com
-AUTH_COOKIE_SECURE=true
-TRUSTED_PROXIES=127.0.0.1
-```
-
-`MCP_PUBLIC_URL` 必须使用 `/mcp` 路径，不能有 query/fragment；其来源必须包含在 `APP_ORIGINS` 中。只有本机回环地址允许 HTTP。按 Nginx 模板把 `/mcp`、`/oauth/` 和三个元数据地址转发到后端。后台程序仍只监听本机，由 Nginx 提供 HTTPS；008 迁移随后端启动执行，发布前需备份数据库。
-
-在支持上述 OAuth 能力的 AI 应用中填写完整 MCP URL，按浏览器提示用已有管理员账号登录并批准读取。随后可以询问“查询最近注册的 20 位用户”或“查找邮箱包含 example.com 的用户”。管理台的“AI 应用授权”入口可撤销授权。
-
-也可使用 [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) 检查发现、授权和工具调用。不同客户端的配置界面不同；不要将管理员密码或浏览器 Cookie 填入工具参数。
-
-本机调试使用管理端 Vite 的统一来源，例如 `MCP_PUBLIC_URL=http://127.0.0.1:5176/mcp`，同时加入 `APP_ORIGINS`。Vite 已代理 MCP、OAuth 与元数据路径，保留 Host，使浏览器登录和授权在同源完成。
-
-## 验证记录
-
-2026-10-18：真实隔离 PostgreSQL + Go SDK 验证发现、调用、搜索/分页/空结果、Schema 校验、额外工具拒绝、权限变化、过期/撤销/resource/scope 校验、错误 PKCE 回滚及 8 路并发单次兑换。查询故障被分类为工具错误；数据字段与凭证持久化检查通过。Go 全包测试、vet 和构建通过。
-
-Chrome → Vite → Gin → 隔离数据库的实际浏览器流程验证登录回跳、授权页桌面/390px 手机布局、取消零签发、授权兑换、旧版协议初始化/调用和管理台撤销。没有浏览器脚本错误，未调用 Ark/OSS；临时 schema 已清理。证据位于忽略目录 `admin/artifacts/mcp/verification.json` 及截图。
-
-复跑后端专项需要设置指向本机 `*_test` 数据库的 `TEST_DATABASE_URL`：`go test ./internal/server -run 'TestMCP|TestAdmin' -count=1`。浏览器实测脚本为 `admin/scripts/verify-live-mcp.mjs`，需要先构建 `backend/bin/mcp-test-server.exe`、`backend/bin/mcp-test-set-admin.exe`，使用本机 `frame_space_test` 数据库和空闲的 8083/5179/5180 端口；脚本只操作自己创建的 schema。
-
-正式发布和线上验收以 [部署指南](./deployment.md) 的对应记录为准；本地测试不能代替具体第三方 AI 产品的最终接入验收。
-
-2026-10-18 已发布 `20261018T111607Z`。正式 HTTPS 的真实 Chrome 走通管理员登录、授权页、取消零签发、S256 授权码兑换、`initialize → tools/list → tools/call` 和撤销流程；MCP 查询限定临时账号，结果与原管理 API 完全一致，撤销后旧令牌返回 401。安全 Cookie、桌面 / 手机布局和浏览器脚本错误检查通过。验收账号、Session、注册积分、应用及授权记录已清理，没有模型 / OSS 调用。线上报告及截图保留在 `.data/mcp-release/production-verification.json` 和同目录中；尚未在具体第三方 AI 应用里完成添加与对话调用。
+2026-10-18 曾发布管理员 `list_users` MCP 并完成当时的正式 HTTPS 验证。那是历史版本；本次普通用户画布工具的发布细节见 [部署指南](./deployment.md)。

@@ -26,8 +26,8 @@ async function submit() {
 <template>
   <main class="login-page" :class="{ 'login-resume': resumeEmail }">
     <header class="login-header">
-      <a class="brand login-brand" href="/" aria-label="帧间首页">
-        <img class="brand-mark" src="/favicon.svg" alt="" width="34" height="34" /><span class="brand-name">帧间</span>
+      <a class="brand login-brand" href="/" aria-label="Bubu 首页">
+        <img class="brand-mark" src="/favicon.svg?v=bubu-2" alt="" width="34" height="34" /><span class="brand-name">Bubu</span>
       </a>
     </header>
     <div class="login-layout">
@@ -50,6 +50,6 @@ async function submit() {
         <p class="login-recovery">暂不支持找回密码，请妥善保存。</p>
       </section>
     </div>
-    <p class="login-footer">帧间 · 从一个想法开始</p>
+    <p class="login-footer">Bubu · 从一个想法开始</p>
   </main>
 </template>

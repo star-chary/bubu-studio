@@ -29,7 +29,8 @@ button:disabled { cursor: not-allowed; opacity: .35; }
   background: var(--color-canvas);
 }
 
-.vue-flow__pane { cursor: grab; }
+.vue-flow__viewport { touch-action: none; }
+.vue-flow__pane { cursor: grab; -webkit-touch-callout: none; }
 .vue-flow__pane.dragging { cursor: grabbing; }
 
 .canvas-header {
@@ -46,7 +47,7 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 
 .brand { display: flex; align-items: center; gap: 11px; }
 .brand-mark { display: block; }
-.brand-name { font-family: 'Microsoft YaHei', sans-serif; font-size: 19px; font-weight: 600; letter-spacing: 3px; }
+.brand-name { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.035em; line-height: 1; }
 .header-divider { width: 1px; height: 18px; background: var(--color-border); }
 .canvas-header h1 { margin: 0; color: var(--color-muted); font-size: 13px; font-weight: 400; }
 .experiment-label { margin-left: auto; color: var(--color-muted); font-size: 11px; letter-spacing: 2px; }
@@ -81,7 +82,13 @@ button:disabled { cursor: not-allowed; opacity: .35; }
   user-select: none;
 }
 .gesture-hint svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.3; }
+.touch-gesture-hint { display: none; }
 .hint-separator { margin: 0 12px; color: #6c7380; }
+
+@media (pointer: coarse) {
+  .gesture-hint svg, .mouse-gesture-hint { display: none; }
+  .touch-gesture-hint { display: inline; }
+}
 
 .canvas-toolbar {
   position: absolute;

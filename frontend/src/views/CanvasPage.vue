@@ -21,7 +21,7 @@ import { mediaSource } from '../canvas/mediaActions'
 import { DEFAULT_IMAGE_MODEL, normalizeImageOptions, type ImageModelId } from '../models/imageModels'
 import { type VideoModelId } from '../models/videoModels'
 import { apimartVideoEnabled } from '../models/apimartVideo'
-import { apimartImageCount, apimartImageEnabled } from '../models/apimartImage'
+import { apimartImageCount, apimartImageEnabled, apimartNativeImageBatch } from '../models/apimartImage'
 import { INITIAL_VIEWPORT, MAX_ZOOM, MIN_ZOOM } from '../canvas/viewport'
 import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../api/credits'
 
@@ -102,7 +102,8 @@ const quoteRequest = computed(() => {
   return { kind, input, count, key: JSON.stringify({ kind, ...input, count }) }
 })
 const creditQuote = ref<CreditQuote | null>(null)
-const totalCreditQuote = computed(() => creditQuote.value ? { ...creditQuote.value, points: creditQuote.value.points * (quoteRequest.value?.count ?? 1) } : null)
+const quoteMultiplier = computed(() => quoteRequest.value && apimartNativeImageBatch(quoteRequest.value.input) ? 1 : (quoteRequest.value?.count ?? 1))
+const totalCreditQuote = computed(() => creditQuote.value ? { ...creditQuote.value, points: creditQuote.value.points * quoteMultiplier.value } : null)
 const quoteStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
 const quoteError = ref('')
 let quotedKey = ''
@@ -146,7 +147,7 @@ async function generateActiveNode() {
   const node = activePromptNode.value
   const request = quoteRequest.value
   const quote = creditQuote.value
-  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * request.count) return
+  if (!node || !request || !quote || quoteStatus.value !== 'ready' || quotedKey !== request.key || credits.status !== 'ready' || credits.available === null || credits.available < quote.points * quoteMultiplier.value) return
   await generateNode(node.id, { input: request.input, quote, count: request.count })
   await refreshCredits()
   if (quoteRequest.value?.key === request.key) refreshQuote()
@@ -184,6 +185,8 @@ function openPrompt({ event, node }: NodeMouseEvent) {
   // 播放和进度控件有自己的操作，不把这些点击当成编辑节点。
   if (event.target instanceof Element && event.target.closest('button, input, textarea, a')) return
   if (node.type !== 'media') return
+  // 长按打开菜单后，松手可能产生一次节点点击；不让它立即关闭菜单。
+  if (contextMenu.value?.nodeId === node.id) return
   contextMenu.value = null
   if (isSelecting.value) {
     selectReference(node.id)
@@ -288,24 +291,69 @@ function filesSelected(event: Event) {
   input.value = ''
 }
 
-function openContextMenu(event: MouseEvent) {
-  event.preventDefault()
+function showCanvasMenu(position: XYPosition) {
   if (isSelecting.value || !ready.value) return
   activePromptId.value = null
   activeMediaId.value = null
   removeSelectedNodes(getSelectedNodes.value)
-  contextMenu.value = { position: { x: event.clientX, y: event.clientY } }
+  contextMenu.value = { position }
 }
+
+function openContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  showCanvasMenu({ x: event.clientX, y: event.clientY })
+}
+
+function showNodeMenu(nodeId: string, position: XYPosition) {
+  const node = nodes.value.find((item) => item.id === nodeId)
+  if (isSelecting.value || !ready.value || auth.status !== 'authenticated' || node?.type !== 'media') return
+  activePromptId.value = null
+  activeMediaId.value = null
+  addSelectedNodes([node])
+  contextMenu.value = { nodeId, position }
+}
+
+let longPress: { pointerId: number; position: XYPosition; timer: ReturnType<typeof setTimeout> } | null = null
+function cancelCanvasLongPress() {
+  if (longPress) clearTimeout(longPress.timer)
+  longPress = null
+}
+
+function startCanvasLongPress(event: PointerEvent) {
+  if (event.pointerType !== 'touch') return
+  if (longPress) { cancelCanvasLongPress(); return }
+  if (!event.isPrimary || !(event.target instanceof Element)
+    || isSelecting.value || !ready.value || auth.status !== 'authenticated') return
+  // 只响应画布空白和节点，播放、进度等控件保持原有操作。
+  if (event.target.closest('button, input, textarea, select, a, [contenteditable], .nodrag')) return
+  const nodeId = event.target.closest('.vue-flow__node')?.getAttribute('data-id')
+  if (!nodeId && !event.target.classList.contains('vue-flow__pane')) return
+  const position = { x: event.clientX, y: event.clientY }
+  const timer = setTimeout(() => {
+    longPress = null
+    if (nodeId) showNodeMenu(nodeId, position)
+    else showCanvasMenu(position)
+  }, 500)
+  longPress = { pointerId: event.pointerId, position, timer }
+}
+
+function moveCanvasLongPress(event: PointerEvent) {
+  if (!longPress || event.pointerId !== longPress.pointerId) return
+  if (Math.hypot(event.clientX - longPress.position.x, event.clientY - longPress.position.y) > 10) cancelCanvasLongPress()
+}
+
+function endCanvasLongPress(event: PointerEvent) {
+  if (event.pointerId === longPress?.pointerId) cancelCanvasLongPress()
+}
+
+onMounted(() => window.addEventListener('blur', cancelCanvasLongPress))
+onBeforeUnmount(() => { window.removeEventListener('blur', cancelCanvasLongPress); cancelCanvasLongPress() })
 
 function openNodeContextMenu({ event, node }: NodeMouseEvent) {
   if (!(event instanceof MouseEvent)) return
   event.preventDefault()
   event.stopPropagation()
-  if (isSelecting.value || !ready.value || node.type !== 'media') return
-  activePromptId.value = null
-  activeMediaId.value = null
-  addSelectedNodes([node])
-  contextMenu.value = { nodeId: node.id, position: { x: event.clientX, y: event.clientY } }
+  showNodeMenu(node.id, { x: event.clientX, y: event.clientY })
 }
 
 function resetViewport() {
@@ -314,7 +362,8 @@ function resetViewport() {
 </script>
 
 <template>
-  <main ref="canvasElement" class="canvas-page" tabindex="-1" aria-label="帧间画布" aria-describedby="canvas-instructions">
+  <main ref="canvasElement" class="canvas-page" tabindex="-1" aria-label="Bubu 画布" aria-describedby="canvas-instructions" @pointerdown.capture="startCanvasLongPress" @pointermove.capture="moveCanvasLongPress" @pointerup.capture="endCanvasLongPress" @pointercancel.capture="endCanvasLongPress">
+    <!-- 布尔值允许触摸手势；按键数组会过滤没有鼠标按键编号的触摸事件。 -->
     <VueFlow
       :id="flowId"
       :edges="referenceEdges"
@@ -324,7 +373,7 @@ function resetViewport() {
       :default-viewport="INITIAL_VIEWPORT"
       :min-zoom="MIN_ZOOM"
       :max-zoom="MAX_ZOOM"
-      :pan-on-drag="[0, 1]"
+      :pan-on-drag="true"
       :pan-on-scroll="false"
       :zoom-on-scroll="true"
       :zoom-on-pinch="true"
@@ -353,7 +402,7 @@ function resetViewport() {
     <header class="canvas-header">
       <button class="home-button" type="button" aria-label="返回首页" :disabled="leaving" @click="returnHome()">
         <span aria-hidden="true">‹</span>
-        <img class="brand-mark" src="/favicon.svg" alt="" width="38" height="38" />
+        <img class="brand-mark" src="/favicon.svg?v=bubu-2" alt="" width="38" height="38" />
         <span>首页</span>
       </button>
       <span class="header-divider" aria-hidden="true"></span>
@@ -393,7 +442,8 @@ function resetViewport() {
         <rect x="5" y="2" width="10" height="16" rx="5" />
         <path d="M10 5v4" />
       </svg>
-      <span>按住空白处拖动<span class="hint-separator">·</span>滚轮缩放</span>
+      <span class="mouse-gesture-hint">按住空白处拖动<span class="hint-separator">·</span>滚轮缩放</span>
+      <span class="touch-gesture-hint">单指拖动<span class="hint-separator">·</span>双指缩放<span class="hint-separator">·</span>长按空白处或节点打开菜单</span>
     </p>
 
     <CanvasToolbar

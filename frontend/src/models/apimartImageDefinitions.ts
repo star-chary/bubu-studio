@@ -3,6 +3,8 @@ import definitions from '../../../backend/internal/apimart/image_models.json' wi
 export interface APIMartImageDefinition {
   modelId: string
   maxReferenceImages: number
+  maxReferenceBytes?: number
+  maxSingleReferenceBytes?: number
   parameters: { key: string }[]
 }
 

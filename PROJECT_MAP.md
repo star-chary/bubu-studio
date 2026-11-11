@@ -1,5 +1,19 @@
 # 项目地图
 
+2026-11-11 Seedream 5.5 图片生成已随 `20261111T101845Z` 发布：图片节点新增 `seedream-5-5`，支持文生图和最多 10 张参考图生成，选择 1K / 1.5K / 2K 与比例，每次请求生成一张；不开放图层拆分。按上游公开价格将每张参考图从第一张开始计入固定积分报价，复用现有任务、素材与积分流程，无新增表或迁移。隔离数据库 Go 全包测试、`go vet`、构建、本地 36 项回归，以及线上页面 17 项模拟操作和 4 项本地模型契约检查通过；未验证真实付费出图或真实 OSS 转存。详见 [APIMart 图片生成](./docs/apimart-image-generation.md)。
+
+2026-11-11 前台产品名称统一为 Bubu：首页、登录页、画布入口、浏览器标签和 OAuth 授权页使用同一名称与 SVG 标识 `frontend/public/favicon.svg`。标识使用错落交织的双画面和闪光造型，采用黑白灰配色；OAuth 页面仅允许加载同源图片。桌面及窄屏显示、相关浏览器回归和授权页策略测试通过；本地改动尚未发布线上。
+
+2026-11-12 普通用户画布 MCP 和首页连接入口已随 `20261111T160133Z` 发布，工作区源码尚未提交或推送。远程 `/mcp` 通过普通用户 OAuth 授权提供画布列表、读取画布、创建节点、模型清单、配置节点、生成报价、提交生成、查询任务共八个工具；旧授权需重新授权，管理台用户查询接口保留。节点写入既有快照，报价和提交复用现有任务与积分，无新增数据库表。隔离 PostgreSQL 后端全包测试、vet、构建及正式页面模拟交互通过；线上 MCP 授权元数据和匿名拒绝正常，尚未完成线上普通用户 OAuth 和真实付费生成验收。本机 Codex 已完成普通用户授权、八个工具发现及只读调用。打开中的画布不会自动同步。见 [画布 MCP](./docs/mcp.md)。
+
+2026-11-10 Muse Video 已随 `20261110T055953Z` 发布：视频节点接入 `muse-video-ext` 的文生和最多 9 张参考图生成，输出约 10 秒、720p，有声且不显示声音勾选框。平台按每次 6 测试积分报价，参考图合计不超过 11 MiB；复用现有视频任务、OSS 和积分流程，无新增表或迁移。隔离数据库 Go 全包测试、`go vet`、构建、本地 36 项视频与模型回归以及线上实际页面的 30 项模型专项通过（业务接口为模拟）；线上模型列表可读取，未验证真实付费生成或真实 OSS 转存。详见 [Muse Video 视频生成](./docs/apimart-muse-video.md)。
+
+2026-11-10 Nano Banana 2.1 图片模型已发布 `20261109T192342Z`：图片节点可选 1、2、4 张；单张使用 `gemini-nano-banana-2.1-ext`，2 / 4 张使用 `gemini-nano-banana-2.1` 一次提交。每张图片各有画布节点和素材记录，多图共用一个上游任务和一次积分冻结；结果不全、提交状态不明或转存异常时保留待核查状态，不自动重发。复用现有任务、素材和积分表，无新增迁移；官方版固定积分只根据输出图片 Token 估算，实际供应商账单可能不同。隔离数据库 Go 全包测试、`go vet`、前端构建、本地 42 项及线上实际页面的 19 项模型回归通过（业务接口为模拟）；生产数据库备份读取与导出检查通过，5 条待核查任务数量不变；未验证真实付费出图或 OSS 转存。详见 [APIMart 图片生成](./docs/apimart-image-generation.md) 和 [固定积分](./docs/apimart-fixed-credits.md)。
+
+2026-11-10 Muse Image 已发布 `20261109T182052Z`：图片节点新增 APIMart `muse-image-ext`，支持文生图、最多 9 张参考图和自动或固定比例；参考图总大小不超过 11 MiB。沿用现有任务、素材和积分链路，无新增表或迁移；按公开黄金价快照报价为每张 2 测试积分。隔离数据库 Go 全包测试、`go vet`、前端构建和本地／线上实际前端的模型模拟验收通过。数据库备份经读取与导出检查，5 条待核查任务数量未变；未进行真实付费出图或账单核对。详见 [APIMart 图片生成](./docs/apimart-image-generation.md)。
+
+2026-11-08 提示词库（本地实现，尚未上线）：首页新增「首页 / 提示词」导航，提示词与关联图片可公开搜索、滑动、查看大图及复制；管理端供管理员新增、编辑、上传多图和删除。后端新增独立内容、图片关联和对象清理记录，公开图片不复用私人画布的授权接口。图片放在现有 OSS 的独立目录；失败的对象删除留待后续管理操作重试。生产发布需同步数据库迁移并合并 Nginx 上传规则。接口、限制和验证边界见 [提示词库](./docs/prompt-library.md)。
+
 2026-11-08 前端发布 `20261108T070227Z`（代码 `f15dd83`）：视频模型列表隐藏火山方舟选项，原有方舟视频模型定义、参数、历史节点和后端生成链路保留；方舟图片选项不变。复用线上后端与管理端，未重启后端；本地构建及 40 项浏览器模拟测试通过，线上页面使用模拟接口验证视频与图片模型列表、历史参数回显，没有发起付费生成。详见 [固定模型与基础参数](./docs/apimart-model-catalog.md)。
 
 2026-11-07 发布 `20261107T154138Z`（代码 `e207bd8`）：APIMart Seedance 2.5 新任务增加 720p、1080p 输出，并保留 480p 默认值；同时按黄金价估算补充普通生成及参考视频档位的固定积分报价，价格版本更新为 `apimart-2026-11-07-v3`。切换模型时仍保留兼容的已有参数；历史任务保留原报价。隔离数据库后端全包测试、`go vet`、前端构建和 28 项模型／视频浏览器模拟测试通过；线上页面用模拟业务接口验证三档画质与新档位报价请求，未提交真实付费生成。详细规则见 [参考视频接入](./docs/apimart-video-reference.md)。
@@ -63,9 +77,9 @@
 | `admin/`、`docs/admin.md` | BuBu-后台管理独立前端、接口／数据模型、初始化、运行与本地验收边界 |
 | `backend/internal/server/admin.go`、`persistence/admin.go` | 管理员权限、用户搜索与分页、带审计的事务发放和请求幂等 |
 | `backend/internal/persistence/migrations/007_admin.sql`、`backend/cmd/set-admin/` | 用户角色、账本审计字段；按明确用户 ID 初始化管理员并撤销旧会话 |
-| `docs/mcp.md`、`backend/internal/server/mcp*.go` | 远程只读工具、参数契约、OAuth 发现 / 授权 / 兑换、管理台授权页面及验证边界 |
-| `backend/internal/persistence/mcp_oauth.go`、`migrations/008_mcp_oauth.sql` | 应用与凭证哈希存储、单次兑换 / 撤销事务、网页和 MCP 共用的管理员查询入口 |
-| `admin/tests/mcp-return.spec.ts`、`admin/scripts/verify-live-mcp.mjs` | 管理台回跳保护，以及 Chrome → 隔离 PostgreSQL 的完整授权 / 调用 / 撤销验收 |
+| `docs/mcp.md`、`backend/internal/server/mcp*.go` | 普通用户画布、模型与生成任务工具，OAuth 授权及验证边界 |
+| `backend/internal/persistence/mcp_oauth.go`、`canvas_nodes.go`、`migrations/008_mcp_oauth.sql` | 应用与凭证哈希存储、单次兑换 / 撤销事务、画布节点事务与版本保护 |
+| `frontend/tests/mcp-return.spec.ts`、`frontend/scripts/verify-live-mcp.mjs` | 普通用户登录回跳保护，以及 Chrome → 隔离 PostgreSQL 的授权 / 节点创建 / 撤销验收 |
 | `docs/deployment.md` | 通用部署目录、配置模板、服务与数据流、发布检查和证书维护 |
 | `docs/development-notes.md` | 原 README 中的开发过程、交互细节和分阶段验证记录 |
 | `deploy/nginx/studio.example.conf`、`frame-space-proxy.conf`、`frame-space-upload-size.conf` | 脱敏后的独立站点示例、同机反向代理和上传 200 MiB 配置；请求头边界已验证，完整 200 MiB 上传尚未验收 |

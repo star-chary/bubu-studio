@@ -52,7 +52,25 @@ func detectMedia(reader io.ReadSeeker, size int64) (mediaType, error) {
 	return media, nil
 }
 
-// Only keys allocated under this application's current environment can be read.
+func (b *KeyBuilder) validatePromptImageKey(key string) (mediaType, error) {
+	root := b.root + "/prompt-library/"
+	if strings.HasPrefix(key, root) {
+		parts := strings.Split(strings.TrimPrefix(key, root), "/")
+		if len(parts) == 2 && uuid.MatchString(parts[0]) {
+			extension := path.Ext(parts[1])
+			if uuid.MatchString(strings.TrimSuffix(parts[1], extension)) {
+				for _, media := range allowedMedia {
+					if media.kind == Image && media.extension == extension {
+						return media, nil
+					}
+				}
+			}
+		}
+	}
+	return mediaType{}, &Error{Status: 400, Code: "INVALID_ASSET_KEY", Message: "无效的资源路径。"}
+}
+
+// Canvas reference validation remains restricted to canvas objects.
 func (b *KeyBuilder) validateKey(key string) (mediaType, error) {
 	root := b.root + "/canvases/"
 	if !strings.HasPrefix(key, root) {

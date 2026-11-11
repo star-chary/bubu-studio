@@ -2,8 +2,17 @@
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { auth, login, logout, restoreSession } from './api'
 import UsersPage from './UsersPage.vue'
+import PromptsPage from './PromptsPage.vue'
 
 const email = ref(''), password = ref(''), visible = ref(false), busy = ref(false), error = ref('')
+const viewFromURL = () => new URLSearchParams(location.search).get('page') === 'prompts' ? 'prompts' : 'users'
+const view = ref<'users' | 'prompts'>(viewFromURL())
+function selectView(next: 'users' | 'prompts') {
+  if (view.value === next) return
+  history.pushState(null, '', next === 'prompts' ? '/admin/?page=prompts' : '/admin/')
+  view.value = next
+}
+function onPopState() { view.value = viewFromURL() }
 // Return only to our own authorization pages after the normal admin login.
 watch(() => auth.status, status => {
   if (status !== 'ready') return
@@ -28,8 +37,8 @@ async function signOut() {
   finally { busy.value = false }
 }
 function pageShow(event: PageTransitionEvent) { if (event.persisted) void restoreSession() }
-onMounted(() => { void restoreSession(); window.addEventListener('pageshow', pageShow) })
-onBeforeUnmount(() => window.removeEventListener('pageshow', pageShow))
+onMounted(() => { void restoreSession(); window.addEventListener('pageshow', pageShow); window.addEventListener('popstate', onPopState) })
+onBeforeUnmount(() => { window.removeEventListener('pageshow', pageShow); window.removeEventListener('popstate', onPopState) })
 </script>
 
 <template>
@@ -38,14 +47,15 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', pageShow))
     <aside class="sidebar">
       <a class="brand" href="/admin/" aria-label="BuBu-后台管理首页"><span class="brand-mark">B</span><span>BuBu<small>后台管理</small></span></a>
       <div class="nav-caption">管理工作台</div>
-      <a href="/admin/" class="nav-item" aria-current="page"><span aria-hidden="true">◎</span>用户管理</a>
+      <a href="/admin/" class="nav-item" :aria-current="view === 'users' ? 'page' : undefined" @click.prevent="selectView('users')"><span aria-hidden="true">◎</span>用户管理</a>
+      <a href="/admin/?page=prompts" class="nav-item" :aria-current="view === 'prompts' ? 'page' : undefined" @click.prevent="selectView('prompts')"><span aria-hidden="true">▤</span>提示词管理</a>
       <a v-if="auth.mcpEnabled" href="/oauth/connections" class="nav-item"><span aria-hidden="true">↗</span>AI 应用授权</a>
       <div class="sidebar-bottom"><span class="status-dot"></span>测试积分阶段<small>BuBu-后台管理</small></div>
     </aside>
     <div class="workspace-body">
-      <header class="topbar"><span>管理工作台 <span class="slash">/</span> 用户管理</span><div class="account"><span class="avatar" aria-hidden="true">{{ auth.user?.email[0]?.toUpperCase() }}</span><span class="account-email">{{ auth.user?.email }}</span><button class="text-button" :disabled="busy" @click="signOut">退出登录</button></div></header>
+      <header class="topbar"><span>管理工作台 <span class="slash">/</span> {{ view === 'users' ? '用户管理' : '提示词管理' }}</span><div class="account"><span class="avatar" aria-hidden="true">{{ auth.user?.email[0]?.toUpperCase() }}</span><span class="account-email">{{ auth.user?.email }}</span><button class="text-button" :disabled="busy" @click="signOut">退出登录</button></div></header>
       <p v-if="error" class="notice error global-error" role="alert">{{ error }}</p>
-      <UsersPage />
+      <KeepAlive><component :is="view === 'users' ? UsersPage : PromptsPage" /></KeepAlive>
     </div>
   </div>
   <main v-else class="login-layout">

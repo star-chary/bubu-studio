@@ -45,6 +45,21 @@ func scanAdminUser(row pgx.Row) (AdminUser, error) {
 	return u, mapError(err)
 }
 
+// Recheck the server-verified actor before returning administrator-only data.
+func (s *Store) AdminUsersForActor(ctx context.Context, actorID, query string, limit, offset int) ([]AdminUser, int64, error) {
+	if !ValidID(actorID) {
+		return nil, 0, ErrAdminRequired
+	}
+	var allowed bool
+	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin' AND status='active')`, actorID).Scan(&allowed); err != nil {
+		return nil, 0, err
+	}
+	if !allowed {
+		return nil, 0, ErrAdminRequired
+	}
+	return s.AdminUsers(ctx, query, limit, offset)
+}
+
 func (s *Store) AdminUsers(ctx context.Context, query string, limit, offset int) ([]AdminUser, int64, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if utf8.RuneCountInString(query) > 254 || limit < 1 || limit > 100 || offset < 0 || offset > 100000 {

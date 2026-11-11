@@ -17,6 +17,8 @@ var (
 	ErrConflict                  = errors.New("version or request conflict")
 	ErrBusy                      = errors.New("generation busy")
 	ErrInvalid                   = errors.New("invalid canvas or node")
+	ErrReferenceSize             = errors.New("reference images exceed model size limit")
+	ErrNanoReferenceSize         = errors.New("nano reference images exceed model size limit")
 	ErrPromptReferences          = errors.New("invalid prompt reference binding")
 	ErrModelGenerationNotEnabled = errors.New("model generation not enabled")
 )
@@ -101,21 +103,23 @@ type CanvasSummary struct {
 	Preview   []CanvasPreviewNode `json:"preview"`
 }
 type Input struct {
-	Provider      string            `json:"provider,omitempty"`
-	Parameters    map[string]any    `json:"parameters,omitempty"`
-	ImageOptions  *ark.ImageOptions `json:"imageOptions,omitempty"`
-	PromptParts   []PromptPart      `json:"promptParts,omitempty"`
-	References    []Reference       `json:"references,omitempty"`
-	Mode          string            `json:"mode,omitempty"`
-	Resolution    string            `json:"resolution,omitempty"`
-	Ratio         string            `json:"ratio,omitempty"`
-	Duration      int               `json:"duration,omitempty"`
-	GenerateAudio *bool             `json:"generateAudio,omitempty"`
-	Prompt        string            `json:"prompt"`
-	Model         string            `json:"model"`
-	CanvasID      string            `json:"canvasId"`
-	NodeID        string            `json:"nodeId"`
-	ReferenceKeys []string          `json:"referenceKeys,omitempty"`
+	Provider          string            `json:"provider,omitempty"`
+	Parameters        map[string]any    `json:"parameters,omitempty"`
+	ImageOptions      *ark.ImageOptions `json:"imageOptions,omitempty"`
+	PromptParts       []PromptPart      `json:"promptParts,omitempty"`
+	References        []Reference       `json:"references,omitempty"`
+	Mode              string            `json:"mode,omitempty"`
+	Resolution        string            `json:"resolution,omitempty"`
+	Ratio             string            `json:"ratio,omitempty"`
+	Duration          int               `json:"duration,omitempty"`
+	GenerateAudio     *bool             `json:"generateAudio,omitempty"`
+	Prompt            string            `json:"prompt"`
+	Model             string            `json:"model"`
+	CanvasID          string            `json:"canvasId"`
+	NodeID            string            `json:"nodeId"`
+	ReferenceKeys     []string          `json:"referenceKeys,omitempty"`
+	OutputNodeIDs     []string          `json:"outputNodeIds,omitempty"`
+	BatchParentTaskID string            `json:"batchParentTaskId,omitempty"`
 }
 type Result struct {
 	Resolution      string  `json:"resolution,omitempty"`
@@ -129,6 +133,7 @@ type Result struct {
 	ark.ImageResult
 	Asset        *storage.Asset `json:"asset,omitempty"`
 	StorageError string         `json:"storageError,omitempty"`
+	BatchReview  bool           `json:"batchReview,omitempty"`
 }
 type Task struct {
 	CreditPoints       int64         `json:"creditPoints"`
@@ -205,7 +210,7 @@ func validateModelSelection(sel *ModelSelection) error {
 
 func (s Snapshot) Validate() error {
 	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && math.Abs(v) <= 1e7 }
-	if s.Nodes == nil || len(s.Nodes) > 300 || !finite(s.Viewport.X) || !finite(s.Viewport.Y) || s.Viewport.Zoom < .25 || s.Viewport.Zoom > 2 {
+	if s.Nodes == nil || len(s.Nodes) > 300 || !finite(s.Viewport.X) || !finite(s.Viewport.Y) || s.Viewport.Zoom < .25 || s.Viewport.Zoom > 20 {
 		return ErrInvalid
 	}
 	nodes := map[string]Node{}

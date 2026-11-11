@@ -52,6 +52,58 @@ func TestAPIMartVideoTaskIsOwnedIdempotentAndReservesPoints(t *testing.T) {
 	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 400)
 }
 
+func TestMuseVideoHTTPQuoteReferenceLimitAndReservation(t *testing.T) {
+	db := authDB(t)
+	h := NewRouter(nil, &creditTestStorage{}, db)
+	owner := signIn(t, h, "muse-video@example.test", "muse-video-pass1")
+	canvasID, nodeID, imageA, imageB := identity.ID(), identity.ID(), identity.ID(), identity.ID()
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/canvases", map[string]string{"id": canvasID}, nil), 201)
+	snapshot := persistence.Snapshot{Nodes: []persistence.Node{
+		{ID: nodeID, Data: persistence.NodeData{Kind: "video", Name: "Muse", ModelSelection: &persistence.ModelSelection{Provider: "apimart", ModelID: "muse-video-ext", Parameters: map[string]any{}}}},
+		{ID: imageA, Data: persistence.NodeData{Kind: "image", Name: "A", Origin: "upload"}},
+		{ID: imageB, Data: persistence.NodeData{Kind: "image", Name: "B", Origin: "upload"}},
+	}, Viewport: persistence.Viewport{Zoom: 1}}
+	assertStatus(t, authRequest(h, owner, http.MethodPut, "/api/canvases/"+canvasID, map[string]any{"version": 0, "snapshot": snapshot}, nil), 200)
+	for _, asset := range []storage.Asset{
+		{Key: "muse-video-a", Kind: storage.Image, ContentType: "image/png", Bytes: 5 << 20, Media: &storage.MediaMetadata{Width: 960, Height: 540}, Scope: storage.Scope{CanvasID: canvasID, NodeID: imageA}},
+		{Key: "muse-video-b", Kind: storage.Image, ContentType: "image/png", Bytes: 6 << 20, Media: &storage.MediaMetadata{Width: 960, Height: 540}, Scope: storage.Scope{CanvasID: canvasID, NodeID: imageB}},
+	} {
+		if err := db.RecordAsset(t.Context(), asset); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := map[string]any{"taskId": identity.ID(), "canvasId": canvasID, "nodeId": nodeID, "provider": "apimart", "model": "muse-video-ext", "mode": "reference", "prompt": "A moving boat", "parameters": map[string]any{"aspect_ratio": "auto", "duration": 10, "resolution": "720p", "n": 1, "audio": true}, "references": []persistence.Reference{{NodeID: imageA, AssetKey: "muse-video-a", Kind: "image"}, {NodeID: imageB, AssetKey: "muse-video-b", Kind: "image"}}}
+	quote := quoteAPIMart(t, h, owner, "video", body)
+	if quote.Points != 6 {
+		t.Fatalf("expected six points per generation: %+v", quote)
+	}
+	if _, err := db.Pool.Exec(t.Context(), `UPDATE assets SET metadata=jsonb_set(metadata,'{bytes}',to_jsonb($2::bigint)) WHERE key=$1`, "muse-video-b", (6<<20)+1); err != nil {
+		t.Fatal(err)
+	}
+	quoteBody := make(map[string]any)
+	for key, value := range body {
+		quoteBody[key] = value
+	}
+	quoteBody["kind"] = "video"
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/credits/quote", quoteBody, nil), 400)
+	body["acceptedPoints"], body["priceVersion"] = quote.Points, quote.PriceVersion
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 400)
+	if _, err := db.Pool.Exec(t.Context(), `UPDATE assets SET metadata=jsonb_set(metadata,'{bytes}',to_jsonb($2::bigint)) WHERE key=$1`, "muse-video-b", 6<<20); err != nil {
+		t.Fatal(err)
+	}
+	w := authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil)
+	assertStatus(t, w, 202)
+	var task persistence.Task
+	if json.Unmarshal(w.Body.Bytes(), &task) != nil || task.Input.GenerateAudio == nil || !*task.Input.GenerateAudio || task.Input.Duration != 10 || task.Input.Resolution != "720p" || task.CreditPoints != 6 || task.CreditStatus != "reserved" || len(task.Bindings) != 2 {
+		t.Fatalf("unexpected Muse task: %s", w.Body.String())
+	}
+	assertStatus(t, authRequest(h, owner, http.MethodPost, "/api/videos/generations", body, nil), 202)
+	var reserves int
+	if err := db.Pool.QueryRow(t.Context(), `SELECT count(*) FROM credit_ledger WHERE operation='reserve'`).Scan(&reserves); err != nil || reserves != 1 {
+		t.Fatalf("expected one reservation: %d %v", reserves, err)
+	}
+}
+
 func TestSeedance25HighResolutionHTTPQuoteAndSubmit(t *testing.T) {
 	for _, tc := range []struct {
 		resolution string

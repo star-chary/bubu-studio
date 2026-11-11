@@ -20,8 +20,12 @@ import (
 )
 
 func submitForTest(ctx context.Context, client *Client, kind, prompt string) error {
-	if kind == "image" {
-		_, err := client.CreateImage(ctx, ImageRequest{TaskID: prompt, Prompt: prompt, Model: "seedream-5-0-lite"})
+	if kind == "image" || kind == "muse" {
+		model := "seedream-5-0-lite"
+		if kind == "muse" {
+			model = "muse-image-ext"
+		}
+		_, err := client.CreateImage(ctx, ImageRequest{TaskID: prompt, Prompt: prompt, Model: model})
 		return err
 	}
 	input := validInput()
@@ -124,7 +128,7 @@ func TestSubmissionDoesNotFollowRedirects(t *testing.T) {
 }
 
 func TestLostSubmissionIsNotReplayedAfterRouteSwitch(t *testing.T) {
-	for _, kind := range []string{"image", "video"} {
+	for _, kind := range []string{"image", "muse", "video"} {
 		t.Run(kind, func(t *testing.T) {
 			var route, routeA, routeB, first, second atomic.Int32
 			origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

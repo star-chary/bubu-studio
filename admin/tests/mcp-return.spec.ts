@@ -4,9 +4,9 @@ const session = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'op
 
 test('管理员会话恢复后返回本站授权页', async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ json: { session, maxGrantPoints: 10000, maxReasonLength: 200, mcpEnabled: true } }))
-  await page.route('**/oauth/authorize?**', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>授权读取用户</h1>' }))
+  await page.route('**/oauth/authorize?**', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>授权应用访问画布</h1>' }))
   await page.goto('./?mcp_return=' + encodeURIComponent('/oauth/authorize?client_id=test&state=keep-this'))
-  await expect(page.getByRole('heading', { name: '授权读取用户' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '授权应用访问画布' })).toBeVisible()
   await expect(page).toHaveURL(/\/oauth\/authorize\?client_id=test&state=keep-this$/)
 })
 

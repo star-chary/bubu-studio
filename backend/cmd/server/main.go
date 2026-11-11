@@ -104,7 +104,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("帧间后端启动地址：http://%s", address)
+	log.Printf("Bubu 后端启动地址：http://%s", address)
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("后端启动失败：%v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"sort"
 	"strings"
 
 	"frame-space/backend/internal/ark"
@@ -25,6 +26,7 @@ type ParameterCondition struct {
 
 type VideoParameter struct {
 	Key           string               `json:"key"`
+	Aliases       []string             `json:"aliases"`
 	Role          string               `json:"role"`
 	Kind          string               `json:"kind"`
 	Enum          []any                `json:"enum"`
@@ -40,9 +42,11 @@ type VideoParameter struct {
 
 type VideoModelDefinition struct {
 	ModelID                  string           `json:"modelId"`
+	Name                     string           `json:"name"`
 	GenerationEnabled        bool             `json:"generationEnabled"`
 	Modes                    []string         `json:"modes"`
 	MaxReferenceImages       *int             `json:"maxReferenceImages"`
+	MaxReferenceBytes        int64            `json:"maxReferenceBytes"`
 	MaxReferenceVideos       int              `json:"maxReferenceVideos"`
 	MaxReferenceVideoSeconds float64          `json:"maxReferenceVideoSeconds"`
 	MotionControl            bool             `json:"motionControl"`
@@ -52,6 +56,7 @@ type VideoModelDefinition struct {
 	ReferenceRole            string           `json:"referenceRole"`
 	ReferenceTag             string           `json:"referenceTag"`
 	OmitImageRatio           bool             `json:"omitImageRatio"`
+	OmitAutoRatio            bool             `json:"omitAutoRatio"`
 	OmitParameters           []string         `json:"omitParameters"`
 	ImageParameters          map[string]any   `json:"imageParameters"`
 	TextExtra                map[string]any   `json:"textExtra"`
@@ -77,7 +82,37 @@ func VideoDefinition(id string) (VideoModelDefinition, bool) {
 	return m, ok && m.GenerationEnabled && len(m.Modes) > 0
 }
 
+// VideoDefinitions provides a stable read-only list for the MCP model catalog.
+func VideoDefinitions() []VideoModelDefinition {
+	items := make([]VideoModelDefinition, 0, len(videoModels))
+	for _, model := range videoModels {
+		items = append(items, model)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ModelID < items[j].ModelID })
+	return items
+}
+
 func (m VideoModelDefinition) Supports(mode string) bool { return slices.Contains(m.Modes, mode) }
+
+// ParameterValue resolves the aliases used by saved canvas drafts. Image ratio
+// aliases are defined by the frontend catalog rather than the provider JSON.
+func ParameterValue(parameter VideoParameter, values map[string]any) (any, bool) {
+	if value, ok := values[parameter.Key]; ok {
+		return value, true
+	}
+	aliases := append([]string{}, parameter.Aliases...)
+	if parameter.Key == "size" || parameter.Key == "ratio" || parameter.Key == "aspect_ratio" {
+		aliases = append(aliases, "size", "ratio", "aspect_ratio")
+	}
+	for _, alias := range aliases {
+		if alias != parameter.Key {
+			if value, ok := values[alias]; ok {
+				return value, true
+			}
+		}
+	}
+	return nil, false
+}
 
 func (m VideoModelDefinition) ReferenceLimit(mode string) int {
 	if mode == "image" {
@@ -250,6 +285,9 @@ func videoPayload(in ark.VideoRequest) (map[string]any, bool) {
 	out := map[string]any{"model": in.Model, "prompt": in.Prompt}
 	for _, p := range m.Parameters {
 		if slices.Contains(m.OmitParameters, p.Key) || (in.Mode == "image" && m.OmitImageRatio && p.Role == "ratio") {
+			continue
+		}
+		if m.OmitAutoRatio && p.Role == "ratio" && in.Parameters[p.Key] == "auto" {
 			continue
 		}
 		out[p.Key] = in.Parameters[p.Key]

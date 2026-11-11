@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import AccountControl from '../components/AccountControl.vue'
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { persistenceRequest, writeJSON, type CanvasSummary, type SavedCanvas } from '../api/persistence'
 
 const props = withDefaults(defineProps<{ authenticated?: boolean; serviceError?: string; sessionNotice?: string }>(), {
@@ -82,18 +81,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 onMounted(() => { if (props.authenticated) void load() })
+watch(() => props.authenticated, (value) => { if (value) void load(); else canvases.value = [] })
 </script>
 
 <template>
   <div class="home-page">
-    <header class="home-header">
-      <a class="brand" href="/" aria-label="帧间首页">
-        <img class="brand-mark" src="/favicon.svg" alt="" width="34" height="34" />
-        <span class="brand-name">帧间</span>
-      </a>
-      <AccountControl v-if="authenticated" />
-      <button v-else class="sign-in-button" type="button" @click="emit('login')">登录 / 注册</button>
-    </header>
     <main class="home-main">
       <div class="library-heading">
         <div><h1>我的画布</h1><p>从一个想法开始，或接着上次继续。</p></div>
@@ -166,13 +158,6 @@ onMounted(() => { if (props.authenticated) void load() })
 
 <style scoped>
 .home-page { height: 100%; overflow-y: auto; background: #111113; color: #f1f1ef; }
-.home-header { height: 72px; padding: 0 clamp(24px, 3.6vw, 56px); display: flex; align-items: center; gap: 24px; border-bottom: 1px solid #303032; }
-.home-header a { color: inherit; text-decoration: none; }
-.home-header :deep(.account-control > button) { border-color: #454547; background: #252527; color: #e5e5e3; }
-.home-header :deep(.account-control > button:hover:not(:disabled)) { background: #333335; }
-.home-header :deep(.account-control .credit-pill) { border-color: #454547; background: #252527; color: #e5e5e3; }
-.sign-in-button { margin-left: auto; padding: 9px 14px; border: 1px solid #4a4a4c; border-radius: 9px; background: transparent; color: #ededeb; font-size: 13px; cursor: pointer; }
-.sign-in-button:hover { background: #252527; }
 .home-main { max-width: 1520px; margin: 0 auto; padding: clamp(48px, 5vw, 76px) clamp(24px, 3.6vw, 56px) 80px; }
 .library-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: clamp(52px, 6vw, 84px); }
 .library-heading h1 { margin: 0 0 14px; font-size: clamp(34px, 3.3vw, 50px); line-height: 1.16; font-weight: 600; letter-spacing: -.02em; }
@@ -197,7 +182,7 @@ onMounted(() => { if (props.authenticated) void load() })
 .canvas-preview, .new-canvas-tile { width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; }
 .canvas-preview { position: relative; display: grid; place-items: center; overflow: hidden; background: #202022; transition: background 140ms; }
 .canvas-card:hover .canvas-preview { background: #29292b; }
-.canvas-card:focus-visible, .new-canvas-tile:focus-visible, .sign-in-button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #e7e7e3; outline-offset: 4px; }
+.canvas-card:focus-visible, .new-canvas-tile:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #e7e7e3; outline-offset: 4px; }
 .canvas-preview > svg:not(.empty-preview) { display: block; width: 100%; height: 100%; }
 .canvas-preview rect { fill: #343436; stroke: #727274; stroke-width: .8; }
 .canvas-preview g path { stroke: #727274; stroke-width: 1; }
@@ -230,7 +215,6 @@ onMounted(() => { if (props.authenticated) void load() })
 .create-dialog .create-error { color: #efb6a5; margin-top: 14px; }
 @media (max-width: 960px) { .canvas-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) {
-  .home-header { height: 68px; padding: 0 22px; }
   .home-main { padding: 42px 22px 54px; }
   .library-heading { align-items: flex-start; gap: 24px; margin-bottom: 48px; flex-direction: column; }
   .library-heading h1 { font-size: 34px; }

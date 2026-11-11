@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => ({
         timeout: 330_000,
         proxyTimeout: 330_000,
       },
+      '/mcp': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
+      '/oauth': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
+      '/.well-known': { target: loadEnv(mode, '.', 'API_PROXY_TARGET').API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: false },
     },
   },
 }))

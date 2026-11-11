@@ -21,7 +21,18 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const mcpScope = "users:read"
+const (
+	mcpReadScope     = "canvases:read"
+	mcpWriteScope    = "canvases:write"
+	mcpGenerateScope = "generation:write"
+	mcpScope         = mcpReadScope + " " + mcpWriteScope + " " + mcpGenerateScope
+)
+
+// All permissions require explicit consent. Scope ordering is not significant.
+func validMCPScope(scope string) bool {
+	fields := strings.Fields(scope)
+	return len(fields) == 3 && slices.Contains(fields, mcpReadScope) && slices.Contains(fields, mcpWriteScope) && slices.Contains(fields, mcpGenerateScope)
+}
 
 type MCPConfig struct{ URL, Origin, Host string }
 
@@ -52,6 +63,7 @@ func MCPConfigFromEnv() (MCPConfig, error) {
 type mcpGateway struct {
 	db      *persistence.Store
 	store   *persistence.OAuthStore
+	assets  AssetStore
 	manager *manage.Manager
 	config  MCPConfig
 	auth    AuthConfig
@@ -70,7 +82,7 @@ func (mcpAccessGenerator) Token(context.Context, *oauth2.GenerateBasic, bool) (s
 	return identity.Token(), "", nil
 }
 
-func registerMCP(router *gin.Engine, db *persistence.Store, authConfig AuthConfig) {
+func registerMCP(router *gin.Engine, db *persistence.Store, assetStore AssetStore, authConfig AuthConfig) {
 	cfg, err := MCPConfigFromEnv()
 	if err != nil {
 		panic(err)
@@ -98,7 +110,7 @@ func registerMCP(router *gin.Engine, db *persistence.Store, authConfig AuthConfi
 		}
 		return nil
 	})
-	g := &mcpGateway{db, store, manager, cfg, authConfig, &authLimiter{entries: map[string]attemptBucket{}}}
+	g := &mcpGateway{db: db, store: store, assets: assetStore, manager: manager, config: cfg, auth: authConfig, limiter: &authLimiter{entries: map[string]attemptBucket{}}}
 	group := router.Group("", g.guard)
 	group.GET("/.well-known/oauth-protected-resource/mcp", g.resourceMetadata)
 	group.GET("/.well-known/oauth-protected-resource", g.resourceMetadata)
@@ -119,28 +131,35 @@ func registerMCP(router *gin.Engine, db *persistence.Store, authConfig AuthConfi
 	group.GET("/oauth/connections", g.connections)
 	group.POST("/oauth/connections", g.connections)
 
-	sdkServer := mcp.NewServer(&mcp.Implementation{Name: "bubu-users", Version: "1.0.0"}, nil)
+	sdkServer := mcp.NewServer(&mcp.Implementation{Name: "frame-space-canvas", Version: "1.0.0"}, nil)
+	registerMCPCanvasReadTools(sdkServer, g)
+	registerMCPGenerationTools(sdkServer, g)
 	inputSchema := map[string]any{
 		"type": "object", "additionalProperties": false,
+		"required": []string{"canvasId", "kind"},
 		"properties": map[string]any{
-			"q":      map[string]any{"type": "string", "maxLength": 254, "default": "", "description": "邮箱包含搜索或完整用户 ID；空字符串查询全部用户。"},
-			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20, "description": "本次返回数量，默认 20，最多 100。"},
-			"offset": map[string]any{"type": "integer", "minimum": 0, "maximum": 100000, "default": 0, "description": "跳过的条数；下一页加上 limit。"},
+			"canvasId": map[string]any{"type": "string", "minLength": 36, "maxLength": 36, "description": "目标画布 UUID，可从用户提供的画布链接中的 canvas 参数取得。"},
+			"kind":     map[string]any{"type": "string", "enum": []string{"image", "video"}, "description": "image 创建空图片节点，video 创建空视频节点。"},
+			"nodeId":   map[string]any{"type": "string", "minLength": 36, "maxLength": 36, "description": "可选的节点 UUID；重试同一次创建应复用该值。省略时由服务器生成。"},
+			"position": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"x", "y"}, "properties": map[string]any{
+				"x": map[string]any{"type": "number", "minimum": -1e7, "maximum": 1e7},
+				"y": map[string]any{"type": "number", "minimum": -1e7, "maximum": 1e7},
+			}, "description": "可选的画布坐标；省略时在已保存节点附近选择一个空位置。"},
 		},
 	}
 	mcp.AddTool(sdkServer, &mcp.Tool{
-		Name: "list_users", Title: "查询平台用户",
-		Description: "仅供已授权管理员分页查询 BuBu 平台用户。支持邮箱包含搜索或完整用户 ID 搜索，按注册时间和 ID 倒序。返回账号、角色、状态、注册时间、可用及冻结积分。total 是匹配总数，users 仅是当前页。此工具只读，不支持日期范围筛选。",
+		Name: "create_canvas_node", Title: "新建画布节点",
+		Description: "在已授权用户自己的现有画布中创建一个空图片或视频节点，不生成媒体、不消耗积分。需要画布 ID；位置可选。操作前请保存并离开该画布，成功后重新打开，当前已打开页面不会自动同步。提供稳定 nodeId 可在节点仍存在时安全重试；若省略 nodeId 且结果未知，请先查看画布再决定是否重试。",
 		InputSchema: inputSchema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
-	}, g.listUsers)
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+	}, g.createCanvasNode)
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return sdkServer }, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 32 << 10,
 		// We enforce the exact configured Host below, including behind local Nginx.
 		DisableLocalhostProtection: true,
 	})
 	protected := mcpauth.RequireBearerToken(g.verifyToken, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: cfg.Origin + "/.well-known/oauth-protected-resource/mcp", Scopes: []string{mcpScope},
+		ResourceMetadataURL: cfg.Origin + "/.well-known/oauth-protected-resource/mcp", Scopes: []string{mcpReadScope, mcpWriteScope, mcpGenerateScope},
 	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor := mcpauth.TokenInfoFromContext(r.Context())
 		if !g.limiter.allow("actor:"+actor.UserID, 600) {
@@ -184,7 +203,7 @@ func (g *mcpGateway) guard(c *gin.Context) {
 
 func (g *mcpGateway) resourceMetadata(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
-	c.JSON(200, gin.H{"resource": g.config.URL, "authorization_servers": []string{g.config.Origin}, "scopes_supported": []string{mcpScope}, "bearer_methods_supported": []string{"header"}, "resource_name": "BuBu 用户查询"})
+	c.JSON(200, gin.H{"resource": g.config.URL, "authorization_servers": []string{g.config.Origin}, "scopes_supported": []string{mcpReadScope, mcpWriteScope, mcpGenerateScope}, "bearer_methods_supported": []string{"header"}, "resource_name": "Bubu 画布"})
 }
 func (g *mcpGateway) authorizationMetadata(c *gin.Context) {
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -193,7 +212,7 @@ func (g *mcpGateway) authorizationMetadata(c *gin.Context) {
 		"registration_endpoint": g.config.Origin + "/oauth/register", "revocation_endpoint": g.config.Origin + "/oauth/revoke",
 		"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code"},
 		"token_endpoint_auth_methods_supported": []string{"none"}, "revocation_endpoint_auth_methods_supported": []string{"none"},
-		"code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{mcpScope},
+		"code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{mcpReadScope, mcpWriteScope, mcpGenerateScope},
 		"authorization_response_iss_parameter_supported": true,
 	})
 }
@@ -214,46 +233,41 @@ func (g *mcpGateway) verifyToken(ctx context.Context, token string, _ *http.Requ
 	return &mcpauth.TokenInfo{UserID: info.GetUserID(), Scopes: strings.Fields(info.GetScope()), Expiration: info.GetAccessCreateAt().Add(info.GetAccessExpiresIn())}, nil
 }
 
-type listUsersInput struct {
-	Query  string `json:"q,omitempty"`
-	Limit  *int   `json:"limit,omitempty"`
-	Offset *int   `json:"offset,omitempty"`
-}
-type listUsersOutput struct {
-	Users  []persistence.AdminUser `json:"users"`
-	Total  int64                   `json:"total"`
-	Limit  int                     `json:"limit"`
-	Offset int                     `json:"offset"`
+type createCanvasNodeInput struct {
+	CanvasID string                `json:"canvasId"`
+	Kind     string                `json:"kind"`
+	NodeID   string                `json:"nodeId,omitempty"`
+	Position *persistence.Position `json:"position,omitempty"`
 }
 
-func (g *mcpGateway) listUsers(ctx context.Context, request *mcp.CallToolRequest, input listUsersInput) (*mcp.CallToolResult, listUsersOutput, error) {
-	var output listUsersOutput
+type createCanvasNodeOutput struct {
+	persistence.CanvasNodeCreation
+	CanvasURL string `json:"canvasUrl"`
+}
+
+func (g *mcpGateway) createCanvasNode(ctx context.Context, request *mcp.CallToolRequest, input createCanvasNodeInput) (*mcp.CallToolResult, createCanvasNodeOutput, error) {
+	var output createCanvasNodeOutput
 	if request.Extra == nil || request.Extra.TokenInfo == nil {
-		return nil, output, errors.New("需要有效的管理员授权")
+		return nil, output, errors.New("需要有效的用户授权")
 	}
 	actor := request.Extra.TokenInfo
-	if !slices.Contains(actor.Scopes, mcpScope) {
-		return nil, output, errors.New("缺少 users:read 权限")
+	if !slices.Contains(actor.Scopes, mcpWriteScope) {
+		return nil, output, errors.New("缺少画布写入权限")
 	}
-	limit, offset := 20, 0
-	if input.Limit != nil {
-		limit = *input.Limit
-	}
-	if input.Offset != nil {
-		offset = *input.Offset
-	}
-	users, total, err := g.db.AdminUsersForActor(ctx, actor.UserID, input.Query, limit, offset)
+	created, err := g.db.CreateOwnedCanvasNode(ctx, actor.UserID, input.CanvasID, input.NodeID, input.Kind, input.Position)
 	if err != nil {
 		switch {
-		case errors.Is(err, persistence.ErrAdminRequired):
-			return nil, output, errors.New("当前账号没有管理员权限，请重新授权")
+		case errors.Is(err, persistence.ErrNotFound):
+			return nil, output, errors.New("画布不存在或不属于当前用户")
+		case errors.Is(err, persistence.ErrConflict):
+			return nil, output, errors.New("节点 ID 已用于不同类型的节点")
 		case errors.Is(err, persistence.ErrInvalid):
-			return nil, output, errors.New("参数无效：q 最长 254 字符，limit 为 1～100，offset 为 0～100000")
+			return nil, output, errors.New("画布 ID、节点 ID、类型或位置无效，或画布已达到节点或大小限制")
 		default:
-			log.Printf("MCP list_users failed actor=%s", actor.UserID)
-			return nil, output, errors.New("用户查询暂时不可用，请稍后重试")
+			log.Printf("MCP create_canvas_node failed actor=%s", actor.UserID)
+			return nil, output, errors.New("节点创建暂时不可用，请稍后检查画布后再重试")
 		}
 	}
-	log.Printf("MCP list_users actor=%s limit=%d offset=%d returned=%d", actor.UserID, limit, offset, len(users))
-	return nil, listUsersOutput{users, total, limit, offset}, nil
+	log.Printf("MCP create_canvas_node actor=%s canvas=%s node=%s kind=%s created=%t", actor.UserID, created.CanvasID, created.NodeID, created.Kind, created.Created)
+	return nil, createCanvasNodeOutput{CanvasNodeCreation: created, CanvasURL: g.config.Origin + "/?canvas=" + created.CanvasID}, nil
 }

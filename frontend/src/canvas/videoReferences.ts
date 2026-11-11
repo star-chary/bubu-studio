@@ -60,6 +60,7 @@ export function apimartReferencesError(sources: { id: string; data: MediaNodeDat
   const name = model?.name?.trim() || model?.modelId || '该模型'
   const counts: Record<MediaKind, number> = { image: 0, video: 0, audio: 0 }
   let videoSeconds = 0
+  let imageBytes = 0
   const keys = new Set<string>()
   for (const source of sources) {
     const kind = source.data.kind
@@ -72,6 +73,12 @@ export function apimartReferencesError(sources: { id: string; data: MediaNodeDat
     const asset = source.data.asset!
     if (keys.has(asset.key)) return `${label}：同一素材不能重复引用`
     keys.add(asset.key)
+    if (kind === 'image' && definition?.maxReferenceBytes) {
+      imageBytes += asset.bytes
+      if (asset.bytes <= 0 || imageBytes > definition.maxReferenceBytes) return '参考图片大小无效或总大小超过 11 MiB，请压缩或减少参考图片'
+      const error = videoReferenceError(source.data, canvasId, source.id)
+      if (error) return `${label}：${error}`
+    }
     if (kind === 'image' && definition?.motionControl) {
       const error = videoReferenceError(source.data, canvasId, source.id)
       if (error) return `${label}：${error}`

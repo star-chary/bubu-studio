@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -56,6 +57,13 @@ func (s *Store) SaveUpload(ctx context.Context, reader io.Reader, scope Scope) (
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	return s.save(ctx, reader, scope, Upload, "")
+}
+
+// SavePromptImage uses a separate object namespace and accepts images only.
+func (s *Store) SavePromptImage(ctx context.Context, reader io.Reader, promptID, imageID string) (Asset, error) {
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	return s.save(ctx, io.LimitReader(reader, MaxImageBytes+1), Scope{CanvasID: promptID, NodeID: imageID}, Upload, "", Image)
 }
 
 func (s *Store) SaveGenerated(ctx context.Context, sourceURL, model string, scope Scope) (Asset, error) {
@@ -121,7 +129,7 @@ func (s *Store) save(ctx context.Context, reader io.Reader, scope Scope, source 
 	if len(resultKinds) > 0 {
 		expected = resultKinds[0]
 	}
-	if source == Generated && (media.kind != expected || (expected == Video && media.mime != "video/mp4")) {
+	if (source == Generated || len(resultKinds) > 0) && (media.kind != expected || (source == Generated && expected == Video && media.mime != "video/mp4")) {
 		return Asset{}, &Error{415, "INVALID_RESULT_MEDIA", "模型结果不是支持的图片格式。"}
 	}
 	info, err := inspectMedia(ctx, file, media.kind)
@@ -131,11 +139,19 @@ func (s *Store) save(ctx context.Context, reader io.Reader, scope Scope, source 
 	if source == Generated && expected == Video && (info == nil || info.Width <= 0 || info.Height <= 0 || info.DurationSeconds <= 0 || info.VideoCodec != "h264" || (info.AudioCodec != "" && info.AudioCodec != "aac")) {
 		return Asset{}, &Error{415, "INVALID_RESULT_MEDIA", "模型视频不符合网页 MP4 播放要求。"}
 	}
-	key, err := s.keys.NewKey(scope, source, media.kind, media.extension)
+	var key string
+	if source == Upload && len(resultKinds) > 0 {
+		key, err = s.keys.NewPromptImageKey(scope.CanvasID, scope.NodeID, media.extension)
+	} else {
+		key, err = s.keys.NewKey(scope, source, media.kind, media.extension)
+	}
 	if err != nil {
 		return Asset{}, &Error{400, "INVALID_ASSET_SCOPE", err.Error()}
 	}
 	metadata := map[string]string{"canvas-id": scope.CanvasID, "node-id": scope.NodeID, "source": string(source), "asset-file": path.Base(key)}
+	if source == Upload && len(resultKinds) > 0 {
+		metadata = map[string]string{"prompt-id": scope.CanvasID, "image-id": scope.NodeID, "source": "prompt-library"}
+	}
 	if model != "" {
 		metadata["model"] = model
 	}
@@ -150,7 +166,13 @@ func (s *Store) save(ctx context.Context, reader io.Reader, scope Scope, source 
 var singleRange = regexp.MustCompile(`^bytes=(?:[0-9]+-[0-9]*|-[0-9]+)$`)
 
 func (s *Store) Read(ctx context.Context, key, byteRange string) (*Content, error) {
-	media, err := s.keys.validateKey(key)
+	var media mediaType
+	var err error
+	if strings.HasPrefix(key, s.keys.root+"/prompt-library/") {
+		media, err = s.keys.validatePromptImageKey(key)
+	} else {
+		media, err = s.keys.validateKey(key)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -163,4 +185,23 @@ func (s *Store) Read(ctx context.Context, key, byteRange string) (*Content, erro
 	}
 	content.ContentType = media.mime
 	return content, nil
+}
+
+// Deletion is restricted to prompt images; private canvas objects are excluded.
+func (s *Store) DeletePromptImage(ctx context.Context, key string) error {
+	if !strings.HasPrefix(key, s.keys.root+"/prompt-library/") {
+		return &Error{Status: 400, Code: "INVALID_ASSET_KEY", Message: "无效的资源路径。"}
+	}
+	if _, err := s.keys.validatePromptImageKey(key); err != nil {
+		return err
+	}
+	deleter, ok := s.objects.(interface {
+		Delete(context.Context, string) error
+	})
+	if !ok {
+		return &Error{Status: 503, Code: "STORAGE_NOT_CONFIGURED", Message: "图片存储暂时不可用。"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	return deleter.Delete(ctx, key)
 }

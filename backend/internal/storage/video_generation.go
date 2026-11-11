@@ -17,6 +17,7 @@ type TimedSigner interface {
 
 type VideoReferenceLimits struct {
 	MaxImages, MaxVideos, MaxAudios int
+	MaxImageBytes                   int64
 	MaxMediaSeconds                 float64
 	AllowAudioOnly                  bool
 	APIMartModel                    string
@@ -42,6 +43,7 @@ func (s *Store) VideoReferenceURLsWithLimits(ctx context.Context, scope Scope, k
 	seen := map[string]bool{}
 	counts := map[Kind]int{}
 	durations := map[Kind]float64{}
+	var imageBytes int64
 	for _, key := range keys {
 		media, err := s.keys.validateKey(key)
 		if err != nil {
@@ -59,6 +61,12 @@ func (s *Store) VideoReferenceURLsWithLimits(ctx context.Context, scope Scope, k
 		asset, err := s.probeReference(ctx, key, media)
 		if err != nil {
 			return nil, err
+		}
+		if media.kind == Image && limits.MaxImageBytes > 0 {
+			if asset.Bytes <= 0 || asset.Bytes > limits.MaxImageBytes-imageBytes {
+				return nil, &Error{422, "REFERENCE_SIZE_EXCEEDED", "参考图片大小无效或总大小超过模型限制。"}
+			}
+			imageBytes += asset.Bytes
 		}
 		check := CheckVideoReference(asset)
 		if limits.APIMartModel != "" {

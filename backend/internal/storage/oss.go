@@ -152,3 +152,12 @@ func (o *ossObjects) Get(ctx context.Context, key, byteRange string) (*Content, 
 	}
 	return &Content{Body: result.Body, Status: result.StatusCode, Bytes: result.ContentLength, ContentRange: oss.ToString(result.ContentRange), ETag: oss.ToString(result.ETag)}, nil
 }
+
+func (o *ossObjects) Delete(ctx context.Context, key string) error {
+	started := time.Now()
+	_, err := o.client.DeleteObject(ctx, &oss.DeleteObjectRequest{Bucket: oss.Ptr(o.bucket), Key: oss.Ptr(key)})
+	if err != nil {
+		return reportOSSFailure(err, "DeleteObject", 1, started)
+	}
+	return nil
+}

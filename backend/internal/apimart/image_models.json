@@ -1,5 +1,42 @@
 [
   {
+    "modelId": "seedream-5-5",
+    "maxReferenceImages": 10,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": ["auto", "1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "2:1", "1:2", "21:9"],
+        "default": "1:1"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": ["1K", "1.5K", "2K"],
+        "default": "2K"
+      },
+      { "key": "n", "kind": "fixed", "fixed": 1 }
+    ]
+  },
+  {
+    "modelId": "muse-image-ext",
+    "maxReferenceImages": 9,
+    "maxReferenceBytes": 11534336,
+    "parameters": [
+      {
+        "key": "aspect_ratio",
+        "kind": "enum",
+        "enum": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+        "default": "auto"
+      },
+      {
+        "key": "n",
+        "kind": "fixed",
+        "fixed": 1
+      }
+    ]
+  },
+  {
     "modelId": "seedream-5-0-lite",
     "maxReferenceImages": 14,
     "parameters": [
@@ -80,6 +117,7 @@
   {
     "modelId": "gemini-nano-banana-2.1",
     "maxReferenceImages": 14,
+    "maxSingleReferenceBytes": 20000000,
     "parameters": [
       {
         "key": "size",
@@ -111,6 +149,32 @@
           "2K",
           "4K"
         ],
+        "default": "1K"
+      },
+      {
+        "key": "n",
+        "kind": "enum",
+        "enum": [1, 2, 4],
+        "default": 1
+      }
+    ]
+  },
+  {
+    "modelId": "gemini-nano-banana-2.1-ext",
+    "maxReferenceImages": 14,
+    "maxSingleReferenceBytes": 20000000,
+    "maxReferenceBytes": 50000000,
+    "parameters": [
+      {
+        "key": "size",
+        "kind": "enum",
+        "enum": ["auto", "1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "4:5", "5:4", "21:9", "1:4", "4:1", "1:8", "8:1"],
+        "default": "auto"
+      },
+      {
+        "key": "resolution",
+        "kind": "enum",
+        "enum": ["1K", "2K", "4K"],
         "default": "1K"
       },
       {

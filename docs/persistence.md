@@ -108,6 +108,8 @@ JSONB 适合当前整张画布保存与恢复；若未来需要多人协同、�
 
 快照节点格式：`{ id, position: {x,y}, data: {kind,name,prompt?,promptParts?,imageModel?,imageOptions?,videoModel?,videoMode?,videoOptions?,origin?,referenceIds?} }`；快照另含 `viewport: {x,y,zoom}`。2026-10-09 增加可选 `imageOptions: {resolution,ratio,count}`，继续保存于 JSONB，无新迁移；每个图片任务的 `input.imageOptions` 只含分辨率和比例，批量生成对应独立节点与任务。旧节点缺省为 2K／自动／单张，详见 [图片生成](./image-generation.md)。结构化 `promptParts` 已通过素材绑定编译成供应商提示词，见 [引用生成](./reference-generation.md)。任务返回 `id/input/status/result?/error?/createdAt/startedAt?/finishedAt?/updatedAt`；其中 `result` 沿用生成结果结构 `url/model/size?/asset?/storageError?`。
 
+画布视口的 `zoom` 保存范围为 0.25～20，与前端允许的 25%～2000% 一致。
+
 ## 已验证与边界
 
 - `go test -timeout 90s ./...`：设置真实 `TEST_DATABASE_URL` 后覆盖迁移、快照读写、并发版本冲突、并发幂等提交、活动任务限制、任务结果 / 错误持久化、单执行器、重启中断、只恢复转存、Gin HTTP 完整链路；测试使用独立 schema 并清理，不触碰主库画布。未设置测试数据库时这些集成测试明确跳过。

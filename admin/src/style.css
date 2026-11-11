@@ -266,8 +266,8 @@ form > label:first-child {
 
 .nav-item {
   color: #f4f7ff;
-  background: #2b4168;
-  border: 1px solid #3a527b;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 7px;
   align-items: center;
   gap: 13px;
@@ -275,6 +275,13 @@ form > label:first-child {
   font-size: 13px;
   display: flex;
 }
+
+.nav-item[aria-current="page"] {
+  background: #2b4168;
+  border-color: #3a527b;
+}
+
+.nav-item:hover { background: #2b4168; }
 
 .nav-item > span {
   font-size: 20px;
@@ -1231,7 +1238,11 @@ tbody tr:hover {
     height: 66px;
     padding: 13px 19px;
     position: static;
+    gap: 8px;
+    overflow-x: auto;
   }
+
+  .sidebar .brand, .sidebar .nav-item { flex-shrink: 0; }
 
   .sidebar .brand {
     font-size: 20px;

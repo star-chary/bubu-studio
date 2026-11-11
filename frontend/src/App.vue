@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import CanvasPage from './views/CanvasPage.vue'
-import HomePage from './views/HomePage.vue'
+import HomeShell from './views/HomeShell.vue'
 import LoginPage from './views/LoginPage.vue'
 import { auth, restoreAuth } from './auth/session'
 
@@ -11,8 +11,19 @@ const params = new URLSearchParams(location.search)
 const canvasId = params.get('canvas')
 const temporaryId = params.get('temporary')
 const isCanvasRoute = canvasId !== null || temporaryId !== null
-const loginRequested = ref(false)
+// OAuth may return only to the two same-origin pages owned by this app.
+function oauthReturnTarget(value: string | null): string | null {
+  if (!value || isCanvasRoute) return null
+  try {
+    const target = new URL(value, location.origin)
+    if (target.origin === location.origin && !target.username && !target.password && !target.hash && ['/oauth/authorize', '/oauth/connections'].includes(target.pathname)) return target.href
+  } catch { /* Ignore invalid or external return targets. */ }
+  return null
+}
+const oauthReturn = oauthReturnTarget(params.get('mcp_return'))
+const loginRequested = ref(!!oauthReturn)
 watch(() => auth.status, (status) => {
+  if (status === 'authenticated' && oauthReturn) { location.replace(oauthReturn); return }
   if (status === 'authenticated' || (status === 'expired' && !isCanvasRoute)) loginRequested.value = false
 })
 function restorePage(event: PageTransitionEvent) {
@@ -23,8 +34,8 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', restorePage))
 </script>
 
 <template>
-  <div v-if="auth.status === 'loading' || (isCanvasRoute && auth.status === 'error')" class="auth-status" role="status">
-    <img src="/favicon.svg" alt="" width="42" height="42" />
+  <div v-if="auth.status === 'loading' || ((isCanvasRoute || oauthReturn) && auth.status === 'error')" class="auth-status" role="status">
+    <img src="/favicon.svg?v=bubu-2" alt="" width="42" height="42" />
     <p>{{ auth.status === 'loading' ? '正在连接工作空间…' : auth.error }}</p>
     <button v-if="auth.status === 'error'" class="secondary-button" @click="restoreAuth()">重新连接</button>
     <a v-if="auth.status === 'error'" href="/">返回首页</a>
@@ -36,7 +47,6 @@ onBeforeUnmount(() => window.removeEventListener('pageshow', restorePage))
     </div>
     <LoginPage v-if="auth.status === 'expired'" :resume-email="auth.user?.email" />
   </template>
-  <HomePage v-else-if="auth.status === 'authenticated'" authenticated />
-  <LoginPage v-else-if="loginRequested" />
-  <HomePage v-else :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginRequested = true" @retry="restoreAuth()" />
+  <LoginPage v-else-if="loginRequested && auth.status !== 'authenticated'" />
+  <HomeShell v-else :authenticated="auth.status === 'authenticated'" :service-error="auth.status === 'error' ? auth.error : ''" :session-notice="auth.status === 'expired' ? auth.error : ''" @login="loginRequested = true" @retry="restoreAuth()" />
 </template>

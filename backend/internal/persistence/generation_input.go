@@ -77,6 +77,18 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 	seenKeys := map[string]bool{}
 	seenNodes := map[string]bool{}
 	counts := map[string]int{}
+	var referenceBytes, maxReferenceBytes, maxSingleReferenceBytes int64
+	if kind == "image" && input.Provider == ProviderAPIMart {
+		if model, ok := apimart.ImageDefinition(input.Model); ok {
+			maxReferenceBytes = model.MaxReferenceBytes
+			maxSingleReferenceBytes = model.MaxSingleReferenceBytes
+		}
+	}
+	if kind == "video" && input.Provider == ProviderAPIMart {
+		if model, ok := apimart.VideoDefinition(input.Model); ok {
+			maxReferenceBytes = model.MaxReferenceBytes
+		}
+	}
 	for i, r := range refs {
 		var a storage.Asset
 		if err := s.Pool.QueryRow(ctx, `SELECT metadata FROM assets WHERE key=$1 AND canvas_id=$2 AND node_id<>$3`, r.AssetKey, input.CanvasID, input.NodeID).Scan(&a); err != nil {
@@ -85,6 +97,18 @@ func (s *Store) bindReferences(ctx context.Context, input Input, kind string) ([
 		expected := map[string]storage.Kind{"image": storage.Image, "video": storage.Video, "audio": storage.Audio}[r.Kind]
 		if expected == "" || a.Kind != expected || (kind == "video" && a.NodeID != r.NodeID) || seenKeys[r.AssetKey] || seenNodes[a.NodeID] {
 			return nil, ErrInvalid
+		}
+		if maxSingleReferenceBytes > 0 && (a.Bytes <= 0 || a.Bytes > maxSingleReferenceBytes) {
+			return nil, ErrNanoReferenceSize
+		}
+		if maxReferenceBytes > 0 {
+			if a.Bytes <= 0 || a.Bytes > maxReferenceBytes-referenceBytes {
+				if input.Model == "gemini-nano-banana-2.1-ext" {
+					return nil, ErrNanoReferenceSize
+				}
+				return nil, ErrReferenceSize
+			}
+			referenceBytes += a.Bytes
 		}
 		source, err := s.Node(ctx, input.CanvasID, a.NodeID)
 		if err != nil || source.Data.Kind != r.Kind {

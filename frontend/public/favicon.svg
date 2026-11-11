@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#26282B"/><path d="M17 11h-6v6m12-6h6v6M11 23v6h6m12-6v6h-6" stroke="#EEEEF0" stroke-width="2"/><path d="M18 16l7 4-7 4z" fill="#4F8EFF"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Bubu</title>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15c0-3.3 2.6-4.8 5.5-3.3l17 9c3 1.6 3 5.5 0 7l-17 9C14.6 38.3 12 36.8 12 33.5V15Z" stroke="#222222" stroke-width="11"/>
+    <path d="M12 15c0-3.3 2.6-4.8 5.5-3.3l17 9c3 1.6 3 5.5 0 7l-17 9C14.6 38.3 12 36.8 12 33.5V15Z" stroke="#efefed" stroke-width="6.5"/>
+    <path d="M52 30.5c0-3.3-2.6-4.8-5.5-3.3l-17 9c-3 1.6-3 5.5 0 7l17 9c2.9 1.5 5.5 0 5.5-3.3V30.5Z" stroke="#222222" stroke-width="11"/>
+    <path d="M52 30.5c0-3.3-2.6-4.8-5.5-3.3l-17 9c-3 1.6-3 5.5 0 7l17 9c2.9 1.5 5.5 0 5.5-3.3V30.5Z" stroke="#c2c2c0" stroke-width="6.5"/>
+  </g>
+  <path d="M50 5c.6 4 2.2 5.6 6 6.2-3.8.6-5.4 2.2-6 6.2-.6-4-2.2-5.6-6-6.2C47.8 10.6 49.4 9 50 5Z" fill="#ececeb" stroke="#222222" stroke-width="2.4" stroke-linejoin="round"/>
+</svg>

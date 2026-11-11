@@ -51,6 +51,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 			CanvasID       string                   `json:"canvasId"`
 			NodeID         string                   `json:"nodeId"`
 			ReferenceKeys  []string                 `json:"referenceKeys"`
+			OutputNodeIDs  []string                 `json:"outputNodeIds"`
 			ImageOptions   *ark.ImageOptions        `json:"imageOptions"`
 		}
 		if err := decoder.Decode(&input); err != nil {
@@ -75,7 +76,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 				return
 			}
 			if input.Provider == persistence.ProviderAPIMart {
-				request := persistence.Input{Provider: input.Provider, Parameters: input.Parameters, Prompt: input.Prompt, PromptParts: input.PromptParts, Model: input.Model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys}
+				request := persistence.Input{Provider: input.Provider, Parameters: input.Parameters, Prompt: input.Prompt, PromptParts: input.PromptParts, Model: input.Model, ImageOptions: input.ImageOptions, CanvasID: input.CanvasID, NodeID: input.NodeID, ReferenceKeys: input.ReferenceKeys, OutputNodeIDs: input.OutputNodeIDs}
 				existing, lookup := db.Task(c.Request.Context(), input.TaskID)
 				if lookup == nil {
 					if !authorizeTask(c, db, existing.ID) {
@@ -102,7 +103,7 @@ func imageHandler(generator imageGenerator, store AssetStore, db *persistence.St
 				c.JSON(taskHTTPStatus(task), task)
 				return
 			}
-			if input.Provider != "" || input.Parameters != nil {
+			if input.Provider != "" || input.Parameters != nil || len(input.OutputNodeIDs) != 0 {
 				fail(400, "INVALID_MODEL", "图片供应商或参数无效。")
 				return
 			}

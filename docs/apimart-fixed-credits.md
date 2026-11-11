@@ -1,5 +1,13 @@
 # APIMart 固定积分报价
 
+2026-11-11 Seedream 5.5 `seedream-5-5` 已随 `20261111T101845Z` 发布，价格版本为 `apimart-2026-11-11-v7`。APIMart 只读价格接口的黄金价快照为 1K / 1.5K 每张 0.013 美元、2K 每张 0.02275 美元，参考图从第一张起每张增加 0.0052 美元；平台按既有公式换算并冻结固定积分。供应商最终按实际输出像素及参考图数量结算，真实账单尚未核对。
+
+2026-11-10 Muse Video `muse-video-ext` 已随 `20261110T055953Z` 发布，价格版本为 `apimart-2026-11-10-v6`。按 [APIMart 公开黄金价](https://apimart.ai/zh/model/muse-video)每次 0.024 美元换算，每段固定 6 测试积分；按次计价，不按 10 秒重复相乘。真实账户账单尚未核对。
+
+2026-11-10 Nano Banana 2.1 已随 `20261109T192342Z` 发布，价格版本为 `apimart-2026-11-10-v5`。单张 Ext 各清晰度均为 4 测试积分；官方多图按 1K / 2K / 4K 每张 6 / 8 / 16 积分计算一次批量总报价。官方版根据 [APIMart 价格](https://apimart.ai/zh/pricing)及 [Google 输出图片 Token 数](https://ai.google.dev/gemini-api/docs/pricing)估算，**只包含输出图片的估算成本**；供应商还可能收取输入和思考 Token 费用，实际账单与固定积分可能不同，真实账单尚未核对。
+
+2026-11-10 Muse Image 已随 `20261109T182052Z` 发布，当时价格版本为 `apimart-2026-11-10-v4`。[APIMart 模型页](https://apimart.ai/zh/model/muse-image)当前公开黄金价为每张 0.048 Credits（约 0.0048 美元），按既有换算为 2 测试积分；参考图不额外计入本次公开价格快照。真实账户价格及账单尚未核对。
+
 2026-11-07 发布 `20261107T154138Z`：Seedance 2.5 增加 720p / 1080p 普通生成和视频输入报价，价格版本更新为 `apimart-2026-11-07-v3`；详见 [参考视频接入](./apimart-video-reference.md)。下方已标明日期的发布记录是历史状态。
 
 2026-10-30 发布 `20261030T130851Z`：Seedance 2.0 / 2.0 Fast 和 2.5 支持视频参考；新增 Kling 2.6 / 3.0 Motion Control。Seedance 2.5 新任务仅开放 480p，价格版本为 `apimart-2026-10-29-v2`。具体规则见 [参考视频接入](./apimart-video-reference.md)，以下记录保留 2026-10-28 当时状态。
@@ -8,7 +16,7 @@
 
 ## 价格与显示范围
 
-价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元，视频单价按秒、图片单价按张；参考图存在额外费用时另计。原有价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息，视频输入和动作控制价格使用 2026-10-29 快照，Seedance 2.5 的 720p / 1080p 使用 2026-11-07 预估价格。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
+价格表 [`billing_models.json`](../backend/internal/apimart/billing_models.json) 同时用于后端核价和前端菜单。它记录 APIMart 公开价格中的**黄金会员美元价格**，整数单位为千万分之一美元；图片单价按张，多数视频单价按秒，Muse Video 按次；参考图存在额外费用时另计。原有价格依据 [APIMart 价格中心](https://apimart.ai/zh/pricing) 与各模型价格页面在 2026-10-28 的公开信息，视频输入和动作控制价格使用 2026-10-29 快照，Seedance 2.5 的 720p / 1080p 使用 2026-11-07 预估价格。站点账户实际会员等级、价格变化和汇率尚未通过真实账单核对。
 
 按现有积分尺度，使用固定换算假设 `1 美元 = 7.2 元`，延续方舟积分公式：
 
@@ -18,14 +26,21 @@
 
 这相当于在假定 20 积分对应 1 元成本的尺度上乘 1.2 并向上取偶数。积分当前只是测试单位，尚未定义售价或充值，所以不能据此声称已经实现固定利润。换算使用整数计算，避免浮点金额边界误差。价格表不会自动联网更新：供应商价格或支持的计费条件改变时，先核对后更新价格表并更换版本；已有任务始终保留原积分与版本。
 
-当前开放 6 个图片模型：Seedream 5.0 Lite / Pro、FLUX 3 Image / Klein、Qwen Image 3.0 Pro、Z Image Turbo。Seedream Pro 的第一张参考图免费，之后按张计；Qwen Pro 的参考图按张计。其余开放图片模型按所选清晰度的单张价格核算。图片多张生成按独立单图任务提交，页面显示单张积分乘张数的总额；中途余额或报价变化时，可能只提交成功一部分，并停止后续提交。
+线上开放 9 个 APIMart 图片模型。Muse Image 按张计价且无清晰度选项。Seedream 5.5 的参考图从第一张起按张计；Seedream Pro 的第一张参考图免费，之后按张计；Qwen Pro 的参考图按张计。其他开放图片模型按所选清晰度的单张价格核算。除 Nano 的 2 / 4 张外，多张生成按独立单图任务提交，页面显示单张积分乘张数的总额；中途余额或报价变化时，可能只提交成功一部分，并停止后续提交。Nano 批量一次冻结总额并提交一次供应商任务。
 
-当前开放 23 个视频模型：Seedance 2.5 / 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni / 2.6 Motion Control / 3.0 Motion Control、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。普通视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Seedance 视频参考和 Kling 动作控制按[参考视频接入](./apimart-video-reference.md)计价。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价；APIMart 参考音频仍未开放。
+当前开放 24 个视频模型：Muse Video、Seedance 2.5 / 2.0 / 2.0 Fast、Kling V4 / 3.0 Turbo / V3 / V3 Omni / 2.6 Motion Control / 3.0 Motion Control、Wan 3.0 / Prime、MiniMax H3 / H3 Max、HappyHorse 1.0 / 1.1、Vidu Q4 Preview / Q3 Pro、Grok Imagine Video 1.5、FLUX 3 Video、PixVerse V6、Veo 3.1 Quality / Fast Official 和 SkyReels V4 Std。除 Muse Video 按次计价外，普通视频按已开放的清晰度、明确指定的秒数、声音档位计算；MiniMax 与 Grok 的参考图片按价格表计入。Seedance 视频参考和 Kling 动作控制按[参考视频接入](./apimart-video-reference.md)计价。Wan 的自动时长不供新任务选择，后端也不接受自动时长的固定报价；APIMart 参考音频仍未开放。
 
 报价例子（黄金价快照和上述换算假设）：
 
 | 选择 | 平台积分 |
 | --- | ---: |
+| Muse Image，1 张 | 2 |
+| Muse Video，720p，约 10 秒，有声，1 次 | 6 |
+| Seedream 5.5，1K / 1.5K，0 / 2 张参考图 | 4 / 6 |
+| Seedream 5.5，2K，0 / 1 张参考图 | 4 / 6 |
+| Nano Banana 2.1 Ext，1K / 2K / 4K，1 张 | 4 |
+| Nano Banana 2.1 官方版，1K，2 / 4 张 | 12 / 24 |
+| Nano Banana 2.1 官方版，2K，2 张；4K，4 张 | 16；64 |
 | Seedream 5.0 Lite，2K，1 张 | 6 |
 | Seedream 5.0 Lite，4K，2 张 | 12 |
 | FLUX 3 Image Klein，2K／4K，各 1 张 | 2／6 |
@@ -35,9 +50,9 @@
 | Kling 2.6 / 3.0 Motion Control，720p，20 秒参考视频 | 198／356 |
 | PixVerse V6，720p，5 秒，无声／有声 | 28／36 |
 
-分辨率不一定导致价格变化：例如 Seedream 5.0 Lite 的 2K、3K、4K 在本次价格快照中同价。参考素材是每个独立任务的输入，多张图片会重复计入每张任务的参考素材费用。
+分辨率不一定导致价格变化：例如 Seedream 5.0 Lite 的 2K、3K、4K 在本次价格快照中同价。对于独立单图任务，参考素材费用按各任务分别计入。
 
-暂不开放的图片模型为 Nano Banana 2.1、GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；2026-10-30 发布版只开放 480p，2026-11-07 已增加 720p / 1080p，历史任务的执行参数保持兼容。
+仍不开放的图片模型为 GPT Image 2.5 Flare / Sunburst、Nano Banana Pro、FLUX 2 Flex / Max 和 Midjourney 四个菜单版本。前几类存在按实际 Token、线路或清晰度价格不清的问题；FLUX 2 单张参考图按像素档计费，但公开资料未明确足够精确的档位边界；Midjourney 的版本／高清计价待进一步确认。视频 Gemini Omni 1.1 Flash 当前接入没有明确时长，仍然隐藏；尚未实现的其他专用工作流也隐藏。Seedance 2.5 固定积分采用[每秒价格预估](https://apimart.ai/zh/model/doubao-seedance-2-5)，上游实际按 Token 结算，存在成本差额；2026-10-30 发布版只开放 480p，2026-11-07 已增加 720p / 1080p，历史任务的执行参数保持兼容。
 
 ## 业务与数据流
 

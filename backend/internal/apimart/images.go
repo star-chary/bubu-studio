@@ -16,6 +16,7 @@ import (
 type ImageResponse struct {
 	Status  string
 	URL     string
+	URLs    []string
 	Failure *ark.APIError
 }
 
@@ -49,6 +50,16 @@ func (c *Client) CreateImage(ctx context.Context, in ImageRequest) (string, erro
 		payload["model"] = in.Model
 	}
 	for key, value := range in.Parameters {
+		if in.Model == "muse-image-ext" && key == "aspect_ratio" && value == "auto" {
+			continue // APIMart represents automatic ratio by omitting the field.
+		}
+		if in.Model == "seedream-5-5" && in.Parameters["size"] == "auto" {
+			if key == "size" {
+				value = in.Parameters["resolution"] // A tier selects automatic ratio without forcing 2K.
+			} else if key == "resolution" {
+				continue // Resolution is omitted when size is a tier.
+			}
+		}
 		payload[key] = value
 	}
 	if len(in.Images) > 0 {
@@ -64,6 +75,9 @@ func (c *Client) CreateImage(ctx context.Context, in ImageRequest) (string, erro
 	req.GetBody = nil
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	if in.Model == "muse-image-ext" && in.TaskID != "" {
+		req.Header.Set("Idempotency-Key", in.TaskID)
+	}
 	req, trace := traceSubmission(req)
 	unknown := &ark.APIError{Status: 502, Code: "SUBMISSION_UNKNOWN", Message: "无法确认中转站是否已受理图片，已保留任务记录，请核查后再试，未自动重新提交。"}
 	resp, err := c.submitHTTP.Do(req)
@@ -163,6 +177,33 @@ func (c *Client) QueryImage(ctx context.Context, id, model string) (ImageRespons
 		case "processing":
 			out.Status = "running"
 		case "completed":
+			if model == "gemini-nano-banana-2.1" {
+				seen := map[string]bool{}
+				for _, item := range wire.Data.Result.Images {
+					var urls []string
+					if json.Unmarshal(item.URL, &urls) != nil {
+						var single string
+						if json.Unmarshal(item.URL, &single) == nil {
+							urls = []string{single}
+						} else {
+							urls = []string{""}
+						}
+					}
+					for _, address := range urls {
+						if !validResultURL(address) || seen[address] {
+							out.URLs = append(out.URLs, "")
+							continue
+						}
+						seen[address] = true
+						out.URLs = append(out.URLs, address)
+					}
+				}
+				if len(out.URLs) > 0 {
+					out.URL = out.URLs[0]
+				}
+				out.Status = "succeeded"
+				break
+			}
 			if len(wire.Data.Result.Images) == 0 {
 				return out, &ark.PollError{}
 			}

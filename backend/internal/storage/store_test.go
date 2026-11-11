@@ -47,6 +47,53 @@ func (m *memoryObjects) Put(_ context.Context, key, contentType string, size int
 func (m *memoryObjects) Get(_ context.Context, key, _ string) (*Content, error) {
 	return &Content{Body: io.NopCloser(bytes.NewReader(m.data)), Status: 200, Bytes: int64(len(m.data)), ContentType: m.mime}, nil
 }
+func (m *memoryObjects) Delete(_ context.Context, key string) error {
+	if key == m.key {
+		m.data = nil
+	}
+	return nil
+}
+
+func TestPromptImagesUseSeparateNamespaceAndOnlyAllowImages(t *testing.T) {
+	store, objects := testStore(t)
+	data := samplePNG(t)
+	asset, err := store.SavePromptImage(context.Background(), bytes.NewReader(data), testScope.CanvasID, testScope.NodeID)
+	if err != nil || !strings.Contains(asset.Key, "/prompt-library/"+testScope.CanvasID+"/") || !bytes.Equal(objects.data, data) {
+		t.Fatalf("prompt upload: %+v %v", asset, err)
+	}
+	if _, err := store.keys.validateKey(asset.Key); err == nil {
+		t.Fatal("prompt images must not pass canvas reference key validation")
+	}
+	content, err := store.Read(context.Background(), asset.Key, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content.Body.Close()
+	if err := store.DeletePromptImage(context.Background(), asset.Key); err != nil || objects.data != nil {
+		t.Fatalf("delete prompt image: %v", err)
+	}
+	canvasKey, _ := store.keys.NewKey(testScope, Upload, Image, ".png")
+	if err := store.DeletePromptImage(context.Background(), canvasKey); err == nil {
+		t.Fatal("must not delete private canvas objects")
+	}
+	if _, err := store.SavePromptImage(context.Background(), strings.NewReader("<svg></svg>"), testScope.CanvasID, testScope.NodeID); err == nil {
+		t.Fatal("SVG must not be accepted")
+	}
+}
+
+func TestGeneratedImageStillRejectsVideo(t *testing.T) {
+	store, objects := testStore(t)
+	video, err := os.ReadFile("../../../frontend/tests/fixtures/sample-video.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.save(context.Background(), bytes.NewReader(video), testScope, Generated, "test-model"); err == nil {
+		t.Fatal("a generated image must not accept video content")
+	}
+	if objects.puts != 0 {
+		t.Fatal("invalid generated content must not reach object storage")
+	}
+}
 func samplePNG(t *testing.T) []byte {
 	t.Helper()
 	var data bytes.Buffer

@@ -53,7 +53,7 @@ func (s *Store) claimTask(ctx context.Context, lane string) (Task, error) {
 		WHERE claimed_at IS NULL AND (
 			($1='saving' AND status='saving') OR
 			($1='video' AND kind='video' AND status IN ('queued','running')) OR
-			($1='image' AND kind='image' AND (status='queued' OR (status='running' AND input->>'provider'='apimart'))))
+			($1='image' AND kind='image' AND COALESCE(input->>'batchParentTaskId','')='' AND (status='queued' OR (status='running' AND input->>'provider'='apimart'))))
 		ORDER BY CASE WHEN status='running' THEN 0 ELSE 1 END,created_at,id
 		FOR UPDATE SKIP LOCKED LIMIT 1
 	) UPDATE generation_tasks SET claimed_at=now(),updated_at=now(),

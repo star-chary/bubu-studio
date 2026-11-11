@@ -246,6 +246,9 @@ func (s *Store) createTask(ctx context.Context, id string, input Input, kind str
 	if kind == "image" && input.Provider == ProviderAPIMart && normalizeAPIMartImageInput(&input) != nil {
 		return Task{}, ErrInvalid
 	}
+	if kind == "image" && nanoBatchCount(input) > 0 {
+		return Task{}, ErrInvalid // New multi-image tasks require the billed atomic batch path.
+	}
 	if kind == "video" && NormalizeVideoInput(&input) != nil {
 		return Task{}, ErrInvalid
 	}

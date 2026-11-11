@@ -127,6 +127,18 @@ func TestSnapshotValidation(t *testing.T) {
 	if s.Validate() == nil {
 		t.Fatal("invalid viewport accepted")
 	}
+	s.Viewport.Zoom = 8.01
+	if err := s.Validate(); err != nil {
+		t.Fatalf("viewport zoom above previous maximum rejected: %v", err)
+	}
+	s.Viewport.Zoom = 20
+	if err := s.Validate(); err != nil {
+		t.Fatalf("maximum viewport zoom rejected: %v", err)
+	}
+	s.Viewport.Zoom = 20.01
+	if s.Validate() == nil {
+		t.Fatal("viewport zoom above maximum accepted")
+	}
 }
 func TestPostgresSaveConflictAndRoundTrip(t *testing.T) {
 	s := testDB(t)

@@ -87,6 +87,30 @@ func TestVideoPreflightAppliesSelectedModelLimitsBeforeSigning(t *testing.T) {
 	}
 }
 
+func TestVideoPreflightChecksActualImageBytesBeforeSigning(t *testing.T) {
+	data, err := os.ReadFile("../../../frontend/tests/fixtures/sample-image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, objects := testStore(t)
+	timed := &timedMemoryObjects{memoryObjects: objects}
+	store.objects = timed
+	source := testScope
+	source.NodeID = "30303030-3030-4030-8030-303030303030"
+	asset, err := store.SaveUpload(context.Background(), bytes.NewReader(data), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := VideoReferenceLimits{MaxImages: 9, MaxMediaSeconds: 30, MaxImageBytes: int64(len(data)) - 1}
+	if _, err := store.VideoReferenceURLsWithLimits(context.Background(), testScope, []string{asset.Key}, limits); err == nil || len(timed.ttls) != 0 {
+		t.Fatalf("oversized actual object was signed: %v", err)
+	}
+	limits.MaxImageBytes = int64(len(data))
+	if _, err := store.VideoReferenceURLsWithLimits(context.Background(), testScope, []string{asset.Key}, limits); err != nil || len(timed.ttls) != 1 {
+		t.Fatalf("object at exact size boundary should be signed: %v", err)
+	}
+}
+
 func TestAPIMartSeedancePreflightRequiresQuotedVideoDuration(t *testing.T) {
 	data, err := os.ReadFile("../../../frontend/tests/fixtures/reference-video.mp4")
 	if err != nil {

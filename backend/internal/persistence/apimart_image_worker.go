@@ -96,6 +96,10 @@ func (s *Store) executeAPIMartImage(ctx context.Context, t Task, generator APIMa
 			delay = 5 * time.Second
 			switch out.Status {
 			case "succeeded":
+				if nanoBatchCount(t.Input) > 0 && len(t.Input.OutputNodeIDs) > 0 {
+					s.distributeImageBatch(ctx, t, out.URLs)
+					return
+				}
 				result := &Result{ImageResult: ark.ImageResult{URL: out.URL, Model: t.Input.Model}}
 				if !s.retryWrite(ctx, func(c context.Context) error {
 					_, err := s.Pool.Exec(c, `UPDATE generation_tasks SET status='saving',provider_status='succeeded',provider_url=$2,result=$3,polling_error=NULL,updated_at=now() WHERE id=$1 AND status='running'`, t.ID, out.URL, result)

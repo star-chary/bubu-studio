@@ -37,6 +37,12 @@ function add(category: 'image' | 'video', modelId: string, name: string, group: 
 }
 
 // 仅开放产品当前支持的五类参数；比例采用文档允许值的常用集合，不开放任意像素输入。
+add('image', 'seedream-5-5', 'Seedream 5.5', 'primary', 'seedream-5-5/generation', [
+  ratio('size', ['auto', ...seven, '2:1', '1:2', '21:9'], '1:1'), clarity(['1K', '1.5K', '2K'], '2K'), count(1),
+])
+add('image', 'muse-image-ext', 'Muse Image', 'primary', 'muse-image-ext/generation', [
+  { ...ratio('aspect_ratio', ['auto', ...seven], 'auto', '自动：有参考图时跟随参考图比例，无参考图时为 1:1。'), optionLabels: { auto: '自动比例' } }, count(1),
+])
 add('image', 'seedream-5-0-lite', 'Seedream 5.0 Lite', 'primary', 'seedream-5-lite/generation', [
   ratio('size', ['auto', ...seven, '2:1', '1:2', '21:9'], '1:1'), clarity(['2K', '3K', '4K'], '2K'), count(15),
 ])
@@ -44,7 +50,8 @@ add('image', 'seedream-5-0-pro', 'Seedream 5.0 Pro', 'primary', 'seedream-5-0-pr
   ratio('size', ['auto', ...seven, '2:1', '1:2', '21:9'], 'auto'), clarity(['1K', '1.5K', '2K'], '1K'), count(1),
 ])
 add('image', 'gemini-nano-banana-2.1', 'Nano Banana 2.1', 'primary', 'gemini-nano-banana-2.1/generation', [
-  ratio('size', ['auto', ...imageRatios, '1:4', '4:1', '1:8', '8:1'], 'auto'), clarity(['1K', '2K', '4K'], '1K'), count(4),
+  ratio('size', ['auto', ...imageRatios, '1:4', '4:1', '1:8', '8:1'], 'auto'), clarity(['1K', '2K', '4K'], '1K'),
+  choices('n', 'count', [1, 2, 4], 1, { unit: '张', note: '1 张使用 Ext 版；2 或 4 张使用官方版一次生成。' }),
 ])
 for (const variant of ['flare', 'sunburst']) add('image', `gpt-image-2.5-${variant}`, `GPT Image 2.5 ${variant === 'flare' ? 'Flare' : 'Sunburst'}`, 'primary', 'gpt-image-2.5/generation', [
   ratio('size', ['auto', ...imageRatios, '2:1', '1:2', '3:1', '1:3', '9:21'], 'auto'), clarity(['1k', '2k', '4k'], '1k'), count(4),

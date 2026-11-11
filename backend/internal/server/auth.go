@@ -81,6 +81,11 @@ func requireSession(db *persistence.Store, cfg AuthConfig) gin.HandlerFunc {
 		}
 		c.Header("Cache-Control", "no-store")
 		c.Header("Vary", "Cookie")
+		// Only the explicitly published prompt library bypasses authentication.
+		if c.Request.Method == http.MethodGet && (c.Request.URL.Path == "/api/prompts" || strings.HasPrefix(c.Request.URL.Path, "/api/prompt-images/")) {
+			c.Next()
+			return
+		}
 		if db == nil {
 			authFailure(c, 503, "AUTH_UNAVAILABLE", "登录服务尚未连接数据库，请启动后端和数据库后重试。")
 			return

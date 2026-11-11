@@ -11,7 +11,7 @@ export interface CanvasSnapshot {
   viewport: { x: number; y: number; zoom: number }
 }
 export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio'; role?: 'first_frame' }
-export interface TaskInput extends Partial<Omit<VideoOptions, 'resolution' | 'ratio'>> { provider?: 'ark' | 'apimart'; parameters?: Record<string, unknown>; resolution?: string; ratio?: string; prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; imageOptions?: ImageGenerationOptions; referenceKeys?: string[]; references?: TaskReference[]; mode?: VideoMode }
+export interface TaskInput extends Partial<Omit<VideoOptions, 'resolution' | 'ratio'>> { provider?: 'ark' | 'apimart'; parameters?: Record<string, unknown>; resolution?: string; ratio?: string; prompt: string; promptParts?: PromptPart[]; model: string; canvasId: string; nodeId: string; imageOptions?: ImageGenerationOptions; referenceKeys?: string[]; outputNodeIds?: string[]; references?: TaskReference[]; mode?: VideoMode }
 export interface GenerationTask {
   id: string
   kind?: 'image' | 'video'

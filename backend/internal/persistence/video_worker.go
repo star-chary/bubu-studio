@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"frame-space/backend/internal/apimart"
 	"frame-space/backend/internal/ark"
 	"frame-space/backend/internal/storage"
 )
@@ -69,6 +70,11 @@ func (s *Store) executeVideo(ctx context.Context, t Task, generator VideoGenerat
 				return
 			}
 			limits := storage.VideoReferenceLimits{MaxImages: spec.MaxImages, MaxVideos: spec.MaxVideos, MaxAudios: spec.MaxAudios, MaxMediaSeconds: spec.MaxReferenceSeconds, AllowAudioOnly: t.Input.Model == ark.VideoModel}
+			if t.Input.Provider == ProviderAPIMart {
+				if model, ok := apimart.VideoDefinition(t.Input.Model); ok {
+					limits.MaxImageBytes = model.MaxReferenceBytes
+				}
+			}
 			if t.Input.Provider == ProviderAPIMart && spec.MaxVideos > 0 {
 				limits.APIMartModel = t.Input.Model
 				limits.ExpectedVideoSeconds = make(map[string]float64)

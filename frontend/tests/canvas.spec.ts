@@ -30,7 +30,7 @@ test('直接进入临时画布，保持零节点、零连线且没有运行错�
   expect(errors).toEqual([])
 })
 
-test('滚轮以鼠标为缩放中心，限制 25%–200%，工具栏和重置同步', async ({ page }) => {
+test('滚轮以鼠标为缩放中心，限制 25%–2000%，工具栏和重置同步', async ({ page }) => {
   await page.goto('/?temporary=33333333-3333-4333-8333-333333333333')
   await expectInitialViewport(page)
   const anchor = { x: 430, y: 310 }
@@ -43,7 +43,7 @@ test('滚轮以鼠标为缩放中心，限制 25%–200%，工具栏和重置同
   await expect(page.getByLabel('当前缩放比例')).toHaveText(`${Math.round(zoomed.zoom * 100)}%`)
 
   await page.mouse.wheel(0, -20000)
-  await expect(page.getByLabel('当前缩放比例')).toHaveText('200%')
+  await expect(page.getByLabel('当前缩放比例')).toHaveText('2000%')
   await expect(page.getByRole('button', { name: '放大画布', exact: true })).toBeDisabled()
   await page.mouse.wheel(0, 20000)
   await expect(page.getByLabel('当前缩放比例')).toHaveText('25%')

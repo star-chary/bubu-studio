@@ -42,8 +42,12 @@ func (g *mcpGateway) registerClient(c *gin.Context) {
 		oauthError(c, 400, "invalid_client_metadata", "注册参数无效")
 		return
 	}
-	if body.AuthMethod != "none" || (len(body.Grants) > 0 && (len(body.Grants) != 1 || body.Grants[0] != "authorization_code")) || (len(body.Responses) > 0 && (len(body.Responses) != 1 || body.Responses[0] != "code")) || (body.Scope != "" && body.Scope != mcpScope) {
-		oauthError(c, 400, "invalid_client_metadata", "支持 public client、none、authorization_code、code 和 users:read")
+	// Some public clients ask for refresh_token at registration even when the
+	// server does not advertise or issue one. Accept that optional request but
+	// return only the authorization_code grant that this server supports.
+	validGrants := len(body.Grants) == 0 || (slices.Contains(body.Grants, "authorization_code") && len(body.Grants) <= 2 && (len(body.Grants) == 1 || slices.Contains(body.Grants, "refresh_token")))
+	if body.AuthMethod != "none" || !validGrants || (len(body.Responses) > 0 && (len(body.Responses) != 1 || body.Responses[0] != "code")) || (body.Scope != "" && !validMCPScope(body.Scope)) {
+		oauthError(c, 400, "invalid_client_metadata", "需要 public client、none、authorization_code、code 和画布读取、写入及生成权限")
 		return
 	}
 	body.Name = strings.TrimSpace(body.Name)
@@ -101,24 +105,20 @@ func oauthValues(c *gin.Context) (url.Values, bool) {
 	return values, true
 }
 
-func (g *mcpGateway) browserAdmin(c *gin.Context) (persistence.Session, bool) {
+func (g *mcpGateway) browserUser(c *gin.Context) (persistence.Session, bool) {
 	token, _ := c.Cookie(g.auth.cookieName())
 	session, err := g.db.Session(c.Request.Context(), token, false)
 	if errors.Is(err, persistence.ErrSession) {
 		if c.Request.Method == http.MethodGet {
 			returnTo := c.Request.URL.RequestURI()
-			c.Redirect(http.StatusSeeOther, "/admin/?mcp_return="+url.QueryEscape(returnTo))
+			c.Redirect(http.StatusSeeOther, "/?mcp_return="+url.QueryEscape(returnTo))
 		} else {
-			oauthError(c, 401, "access_denied", "登录已过期，请重新登录管理台")
+			oauthError(c, 401, "access_denied", "登录已过期，请重新登录")
 		}
 		return session, false
 	}
 	if err != nil {
 		oauthError(c, 503, "temporarily_unavailable", "登录服务暂时不可用")
-		return session, false
-	}
-	if session.User.Role != "admin" {
-		oauthError(c, 403, "access_denied", "需要管理员账号")
 		return session, false
 	}
 	return session, true
@@ -148,16 +148,16 @@ func (g *mcpGateway) authorize(c *gin.Context) {
 		return
 	}
 	challenge, decodeErr := base64.RawURLEncoding.DecodeString(v.Get("code_challenge"))
-	if v.Get("response_type") != "code" || v.Get("scope") != mcpScope || v.Get("resource") != g.config.URL || v.Get("code_challenge_method") != "S256" || decodeErr != nil || len(challenge) != 32 || len(v.Get("code_challenge")) != 43 || len(v.Get("state")) < 1 || len(v.Get("state")) > 1024 {
-		oauthError(c, 400, "invalid_request", "需要 code、users:read、正确 resource、state 和 S256 PKCE")
+	if v.Get("response_type") != "code" || !validMCPScope(v.Get("scope")) || v.Get("resource") != g.config.URL || v.Get("code_challenge_method") != "S256" || decodeErr != nil || len(challenge) != 32 || len(v.Get("code_challenge")) != 43 || len(v.Get("state")) < 1 || len(v.Get("state")) > 1024 {
+		oauthError(c, 400, "invalid_request", "需要 code、画布读取、写入及生成权限、正确 resource、state 和 S256 PKCE")
 		return
 	}
-	session, ok := g.browserAdmin(c)
+	session, ok := g.browserUser(c)
 	if !ok {
 		return
 	}
 	if c.Request.Method == http.MethodGet {
-		g.renderOAuthPage(c, oauthPage{Title: "授权应用读取用户", Client: client, Email: session.User.Email, CSRF: session.CSRFToken, Values: v})
+		g.renderOAuthPage(c, oauthPage{Title: "授权应用访问画布", Client: client, Email: session.User.Email, CSRF: session.CSRFToken, Values: v})
 		return
 	}
 	if !g.validBrowserPost(c, session, v) {
@@ -217,7 +217,7 @@ func (g *mcpGateway) exchangeToken(c *gin.Context) {
 		return
 	}
 	extension, validResource := info.(oauth2.ExtendableTokenInfo)
-	if !validResource || extension.GetExtension().Get("resource") != g.config.URL {
+	if !validResource || extension.GetExtension().Get("resource") != g.config.URL || info.GetScope() != mcpScope {
 		oauthError(c, 400, "invalid_grant", "授权码不属于此服务")
 		return
 	}
@@ -229,8 +229,8 @@ func (g *mcpGateway) exchangeToken(c *gin.Context) {
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, oautherrors.ErrInvalidAuthorizeCode), errors.Is(err, oautherrors.ErrInvalidClient), errors.Is(err, oautherrors.ErrInvalidCodeChallenge), errors.Is(err, oautherrors.ErrMissingCodeVerifier), errors.Is(err, persistence.ErrInvalid), errors.Is(err, persistence.ErrAdminRequired):
-			oauthError(c, 400, "invalid_grant", "授权码、PKCE、回调地址或管理员权限无效")
+		case errors.Is(err, oautherrors.ErrInvalidAuthorizeCode), errors.Is(err, oautherrors.ErrInvalidClient), errors.Is(err, oautherrors.ErrInvalidCodeChallenge), errors.Is(err, oautherrors.ErrMissingCodeVerifier), errors.Is(err, persistence.ErrInvalid), errors.Is(err, persistence.ErrSession):
+			oauthError(c, 400, "invalid_grant", "授权码、PKCE、回调地址或用户身份无效")
 		default:
 			oauthError(c, 503, "temporarily_unavailable", "授权兑换暂时不可用，请稍后重试")
 		}
@@ -272,7 +272,7 @@ func (g *mcpGateway) revokeToken(c *gin.Context) {
 }
 
 func (g *mcpGateway) connections(c *gin.Context) {
-	session, ok := g.browserAdmin(c)
+	session, ok := g.browserUser(c)
 	if !ok {
 		return
 	}
@@ -288,7 +288,7 @@ func (g *mcpGateway) connections(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/oauth/connections")
 		return
 	}
-	connections, err := g.store.Connections(c.Request.Context(), session.User.ID)
+	connections, err := g.store.Connections(c.Request.Context(), session.User.ID, mcpScope)
 	if err != nil {
 		oauthError(c, 503, "temporarily_unavailable", "授权记录暂时不可用")
 		return

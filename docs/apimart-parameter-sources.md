@@ -15,6 +15,12 @@
 
 ## 图片
 
+### Seedream 5.5
+
+- 选项和上游型号：`seedream-5-5`；来源：[APIMart 文档](https://docs.apimart.ai/cn/api-reference/images/seedream-5-5/generation)。
+- 普通生图提供 1K / 1.5K / 2K、自动及常用固定比例、最多 10 张参考图；单次生成 1 张。
+- 自动比例以所选清晰度档位作为上游 `size` 并省略 `resolution`；图层拆分、OCR、透明背景及自定义像素未接入。
+
 ### Seedream 5.0 Lite
 
 - 分组：常用；选项：`seedream-5-0-lite`；上游型号：`seedream-5-0-lite`。
@@ -33,11 +39,12 @@
 
 ### Nano Banana 2.1
 
-- 分组：常用；选项：`gemini-nano-banana-2.1`；上游型号：`gemini-nano-banana-2.1`。
+- 分组：常用；选项：`gemini-nano-banana-2.1`；单张上游型号 `gemini-nano-banana-2.1-ext`，2 / 4 张使用 `gemini-nano-banana-2.1`。
 - 来源：[APIMart 模型文档](https://docs.apimart.ai/en/api-reference/images/gemini-nano-banana-2.1/generation)。
 - 比例：`size`；auto / 1:1 / 4:3 / 3:4 / 16:9 / 9:16 / 3:2 / 2:3 / 4:5 / 5:4 / 21:9 / 1:4 / 4:1 / 1:8 / 8:1；初值 `auto`。
 - 清晰度：`resolution`；1K / 2K / 4K；初值 `1K`。
-- 生成数量：`n`；1-4；初值 `1`。
+- 生成数量：`n`；页面提供 1 / 2 / 4，初值 `1`。2 / 4 张在一次请求中生成；原官方型号的单图契约仅为历史任务恢复保留。
+- 参考图：平台最多 14 张，单张不超过 20 MB；Ext 参考图总大小不超过 50 MB。
 
 ### GPT Image 2.5 Flare
 
@@ -141,6 +148,13 @@
 - 比例：`size`；16:9 / 4:3 / 1:1 / 3:4 / 9:16 / 3:2 / 2:3 / 21:9；初值 `1:1`。
 
 ## 视频
+
+### Muse Video
+
+- 分组：常用；上游型号：`muse-video-ext`；来源：[APIMart 模型说明](https://apimart.ai/zh/model/muse-video)。
+- 功能：文生视频、最多 9 张参考图；参考图原始大小合计不超过 11 MiB，并受项目视频素材校验限制。
+- 比例：自动 / 1:1 / 16:9 / 9:16 / 4:3 / 3:4 / 3:2 / 2:3；自动时省略 `aspect_ratio`。
+- 生成数量、时长和清晰度固定为 1 段、约 10 秒和 720p；默认有声，界面隐藏声音开关，请求省略声音字段。
 
 ### Seedance 2.5
 

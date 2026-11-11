@@ -10,6 +10,7 @@ import (
 func TestDocumentedVideoModesUseCorrectImageSemantics(t *testing.T) {
 	// Expectations come from the operation docs, independently of the registry.
 	cases := []struct{ model, modes, referenceField, referenceRole, imageField string }{
+		{"muse-video-ext", "tr", "image_urls", "", ""},
 		{"seedance-2.5", "tri", "image_urls", "", "image_with_roles"},
 		{"seedance-2.0", "tri", "image_with_roles", "reference_image", "image_with_roles"},
 		{"seedance-2.0-fast", "tri", "image_with_roles", "reference_image", "image_with_roles"},

@@ -25,6 +25,10 @@ func persistenceFailure(c *gin.Context, err error) {
 		status, code, message = 409, "GENERATION_BUSY", "该节点已有未完成的任务，请等待完成后再试。其他节点可以继续提交。"
 	case errors.Is(err, persistence.ErrInvalid):
 		status, code, message = 400, "INVALID_CANVAS", "画布、节点或参考素材数据无效。"
+	case errors.Is(err, persistence.ErrReferenceSize):
+		status, code, message = 400, "REFERENCE_SIZE_EXCEEDED", "参考图片大小无效或总大小超过 11 MiB，请压缩或减少参考图片。"
+	case errors.Is(err, persistence.ErrNanoReferenceSize):
+		status, code, message = 400, "REFERENCE_SIZE_EXCEEDED", "参考图片单张不能超过 20 MB；单张生成时参考图合计不能超过 50 MB。"
 	case errors.Is(err, persistence.ErrPromptReferences):
 		status, code, message = 422, "INVALID_PROMPT_REFERENCE", "提示词中的素材标签已失效，请重新选择参考素材。"
 	case errors.Is(err, persistence.ErrCreditsInsufficient):

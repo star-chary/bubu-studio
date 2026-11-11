@@ -20,15 +20,15 @@ function reset(status: typeof auth.status, message = '') {
 channel?.addEventListener('message', () => reset('anonymous', '登录状态已在其他页面变化，请重新登录。'))
 
 export class ApiError extends Error { constructor(message: string, public status = 0) { super(message) } }
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
   const current = epoch
   const headers = new Headers(init.headers)
   if (auth.user) headers.set('X-Session-User', auth.user.id)
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', init.body instanceof Blob ? 'application/octet-stream' : 'application/json')
   if (auth.csrfToken && !['GET', 'HEAD'].includes(init.method || 'GET')) headers.set('X-CSRF-Token', auth.csrfToken)
   let response: Response
   try {
-    response = await fetch(path, { ...init, headers, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.any([requests.signal, AbortSignal.timeout(20000), ...(init.signal ? [init.signal] : [])]) })
+    response = await fetch(path, { ...init, headers, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.any([requests.signal, AbortSignal.timeout(timeoutMs), ...(init.signal ? [init.signal] : [])]) })
   } catch { throw new ApiError('连接中断或请求超时，请检查网络后重试。') }
   if (epoch !== current) throw new ApiError('登录状态已变化，请重新登录。')
   const body = response.status === 204 ? null : await response.json().catch(() => null)
