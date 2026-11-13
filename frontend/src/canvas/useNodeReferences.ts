@@ -7,6 +7,7 @@ import { referenceCapability } from '../models/modelCatalog'
 import { catalogModelFor } from '../models/staticModelCatalog'
 import { apimartVideoEnabled } from '../models/apimartVideo'
 import type { MentionCandidate } from './prompt'
+import type { TextReference } from './textNode'
 
 type MediaGraphNode = GraphNode<MediaNodeData>
 export type ReferenceCandidateState = 'target' | 'available' | 'chosen' | 'unavailable'
@@ -57,6 +58,7 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     return count >= limit ? `${model.name} 最多参考 ${limit} 项${mediaKindLabel[source.data.kind]}，请移除多余参考或切换模型` : ''
   }
   const referenceTargetId = ref<string | null>(null)
+  const selectionKind = ref<'media' | 'text'>('media')
   const feedback = ref('')
   const targetNode = computed<MediaGraphNode | undefined>(() =>
     referenceTargetId.value ? findNode(referenceTargetId.value) : undefined,
@@ -87,8 +89,17 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     })
   }
 
+  function textReferencesFor(targetId: string): TextReference[] {
+    const target = findNode(targetId)
+    if (!target || target.type !== 'media') return []
+    return (target.data.textReferenceIds ?? []).flatMap((id: string) => {
+      const source = findNode(id)
+      return source?.type === 'text' ? [{ id, name: source.data.name, text: source.data.text ?? '' }] : []
+    })
+  }
+
   const referenceEdges = computed<Edge[]>(() => nodes.value.flatMap((target) =>
-    referencesFor(target.id).map((source) => ({
+    [...referencesFor(target.id), ...textReferencesFor(target.id)].map((source) => ({
       id: `reference:${source.id}:${target.id}`,
       source: source.id,
       target: target.id,
@@ -105,9 +116,10 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     })),
   ))
 
-  function beginSelection(targetId: string) {
+  function beginSelection(targetId: string, kind: 'media' | 'text' = 'media') {
     const node = findNode(targetId)
-    if (!node || node.type !== 'media' || node.data.kind === 'audio' || (node.data.kind === 'video' && node.data.videoMode === 'text')) return
+    if (!node || node.type !== 'media' || node.data.kind === 'audio' || node.data.origin === 'upload' || (kind === 'media' && node.data.kind === 'video' && node.data.videoMode === 'text')) return
+    selectionKind.value = kind
     referenceTargetId.value = targetId
     feedback.value = ''
   }
@@ -121,6 +133,14 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     const target = targetNode.value
     if (!target) return
     const source: MediaGraphNode | undefined = findNode(sourceId)
+    if (selectionKind.value === 'text') {
+      if (!source || source.type !== 'text') { feedback.value = '请选择文本节点'; return }
+      const ids: string[] = target.data.textReferenceIds ?? []
+      if (ids.includes(sourceId)) { feedback.value = '此文本已添加，可继续选择其他文本'; return }
+      updateNodeData(target.id, { textReferenceIds: [...ids, sourceId] })
+      feedback.value = `已添加 ${source.data.name}，可继续选择`
+      return
+    }
     const reason = unavailableReason(target, source) || (source && capacityReason(target, source))
     if (reason) {
       feedback.value = reason
@@ -145,6 +165,12 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     if (!target) return
     updateNodeData(targetId, { referenceIds: (target.data.referenceIds ?? []).filter((id) => id !== sourceId), ...(target.data.firstFrameId === sourceId ? { firstFrameId: undefined } : {}) })
     feedback.value = ''
+  }
+
+  function removeTextReference(targetId: string, sourceId: string) {
+    const target = findNode(targetId)
+    if (!target) return
+    updateNodeData(targetId, { textReferenceIds: (target.data.textReferenceIds ?? []).filter((id: string) => id !== sourceId) })
   }
 
   function mentionCandidatesFor(targetId: string): MentionCandidate[] {
@@ -182,6 +208,10 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
     if (!target) return undefined
     if (sourceId === target.id) return 'target'
     const source = findNode(sourceId)
+    if (selectionKind.value === 'text') {
+      if (source?.type !== 'text') return 'unavailable'
+      return target.data.textReferenceIds?.includes(sourceId) ? 'chosen' : 'available'
+    }
     if (unavailableReason(target, source) || (source && capacityReason(target, source))) return 'unavailable'
     return target.data.referenceIds?.includes(sourceId) ? 'chosen' : 'available'
   }
@@ -189,6 +219,7 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
   // 新图加载期间保留已有关系；读取失败或素材被移除才清理，避免重新生成时误删连线。
   watch(() => nodes.value.map((node) => [node.id, node.type, node.data.kind, node.data.status, node.data.url]), () => {
     for (const target of nodes.value) {
+      if (target.type !== 'media') continue
       const ids: string[] = target.data.referenceIds ?? []
       // A durable source remains referenced through temporary preview/network
       // failures. Its load status must not erase saved relationships.
@@ -198,9 +229,12 @@ export function useNodeReferences(flowId: string, canvasId: Ref<string>) {
         return !unavailableReason(target, source, true)
       })
       if (validIds.length !== ids.length) updateNodeData(target.id, { referenceIds: validIds, ...(target.data.firstFrameId && !validIds.includes(target.data.firstFrameId) ? { firstFrameId: undefined } : {}) })
+      const textIds: string[] = target.data.textReferenceIds ?? []
+      const validTextIds = textIds.filter((id) => findNode(id)?.type === 'text')
+      if (validTextIds.length !== textIds.length) updateNodeData(target.id, { textReferenceIds: validTextIds })
     }
     if (referenceTargetId.value && !targetNode.value) finishSelection()
   })
 
-  return { targetNode, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference }
+  return { targetNode, isSelecting, selectionKind, feedback, referenceEdges, referencesFor, textReferencesFor, beginSelection, finishSelection, selectReference, removeReference, removeTextReference, candidateState, mentionCandidatesFor, addMentionReference }
 }

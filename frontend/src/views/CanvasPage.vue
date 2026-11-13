@@ -7,6 +7,7 @@ import { auth } from '../auth/session'
 import AccountControl from '../components/AccountControl.vue'
 import CanvasToolbar from '../components/CanvasToolbar.vue'
 import MediaNode from '../components/MediaNode.vue'
+import TextNode from '../components/TextNode.vue'
 import NodeMediaToolbar from '../components/NodeMediaToolbar.vue'
 import NodeAlignmentGuides from '../components/NodeAlignmentGuides.vue'
 import MediaPreviewDialog from '../components/MediaPreviewDialog.vue'
@@ -29,9 +30,9 @@ import { credits, quoteGeneration, refreshCredits, type CreditQuote } from '../a
 const props = defineProps<{ canvasId: string; temporary: boolean }>()
 const flowId = `canvas-${props.canvasId}`
 const { viewport, zoomIn, zoomOut, setViewport, setCenter, screenToFlowCoordinate, flowToScreenCoordinate, getSelectedNodes, addSelectedNodes, removeSelectedNodes } = useVueFlow(flowId)
-const { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
+const { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updateText, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, effectivePromptFor, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting } = useMediaNodes(flowId, props.canvasId, props.temporary)
 const { title, ready, enabled: persistenceEnabled, loadError, saveError, trackingError, saveLabel, saving, conflict, historyOpen, history, hasMore, historyLoading } = session
-const { targetNode: referenceTarget, isSelecting, feedback, referenceEdges, referencesFor, beginSelection, finishSelection, selectReference, removeReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
+const { targetNode: referenceTarget, isSelecting, selectionKind, feedback, referenceEdges, referencesFor, textReferencesFor, beginSelection, finishSelection, selectReference, removeReference, removeTextReference, candidateState, mentionCandidatesFor, addMentionReference } = useNodeReferences(flowId, session.canvasId)
 const { guides: alignmentGuides, start: startAlignment, drag: alignNode, stop: stopAlignment } = useNodeAlignment(flowId,
   computed(() => ready.value && !isSelecting.value && auth.status === 'authenticated'))
 const leaving = ref(false)
@@ -86,6 +87,7 @@ const activeMediaNode = computed(() => nodes.value.find((node) => node.id === ac
 const previewNode = computed(() => nodes.value.find((node) => node.id === previewNodeId.value))
 const fullscreenSource = computed(() => previewNode.value ? mediaSource(previewNode.value.data) : undefined)
 const activeReferences = computed(() => activePromptId.value ? referencesFor(activePromptId.value) : [])
+const activeTextReferences = computed(() => activePromptId.value ? textReferencesFor(activePromptId.value) : [])
 const referenceKinds = computed<MediaKind[]>(() => referenceTarget.value?.data.kind === 'image' || apimartVideoEnabled(referenceTarget.value?.data.modelSelection) ? ['image'] : ['image', 'video', 'audio'])
 const activeCanGenerate = computed(() => {
   const data = activePromptNode.value?.data
@@ -184,7 +186,6 @@ let pendingUploadPosition: XYPosition | null = null
 function openPrompt({ event, node }: NodeMouseEvent) {
   // 播放和进度控件有自己的操作，不把这些点击当成编辑节点。
   if (event.target instanceof Element && event.target.closest('button, input, textarea, a')) return
-  if (node.type !== 'media') return
   // 长按打开菜单后，松手可能产生一次节点点击；不让它立即关闭菜单。
   if (contextMenu.value?.nodeId === node.id) return
   contextMenu.value = null
@@ -192,6 +193,8 @@ function openPrompt({ event, node }: NodeMouseEvent) {
     selectReference(node.id)
     return
   }
+  if (node.type === 'text') { closeNodeTools(); return }
+  if (node.type !== 'media') return
   canvasElement.value?.focus({ preventScroll: true })
   activeMediaId.value = node.id
   // 上传素材用于预览和参考，只有生成节点打开提示词面板。
@@ -214,12 +217,12 @@ function closeNodeTools() {
   activeMediaId.value = null
 }
 
-function selectReferences() {
+function selectReferences(kind: 'media' | 'text') {
   if (isSelecting.value) {
     finishSelection()
     return
   }
-  if (activePromptId.value) beginSelection(activePromptId.value)
+  if (activePromptId.value) beginSelection(activePromptId.value, kind)
 }
 
 function returnToNode() {
@@ -258,7 +261,7 @@ function deleteSelectedNodes(event: KeyboardEvent) {
   const target = event.target
   if (target instanceof Element && (target.closest('input, textarea, select, [contenteditable], [role="textbox"], [role="dialog"]')
     || (target.closest('button, a') && !target.closest('.canvas-context-menu')))) return
-  const ids = getSelectedNodes.value.filter((node) => node.type === 'media').map((node) => node.id)
+  const ids = getSelectedNodes.value.filter((node) => node.type === 'media' || node.type === 'text').map((node) => node.id)
   if (!ids.length || !ready.value || auth.status !== 'authenticated') return
   event.preventDefault()
   deleteCanvasNodes(ids)
@@ -267,7 +270,7 @@ function deleteSelectedNodes(event: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', deleteSelectedNodes))
 onBeforeUnmount(() => document.removeEventListener('keydown', deleteSelectedNodes))
 
-function addNode(kind: Exclude<MediaKind, 'audio'>) {
+function addNode(kind: Exclude<MediaKind, 'audio'> | 'text') {
   if (!contextMenu.value || contextMenu.value.nodeId) return
   createEmptyNode(kind, screenToFlowCoordinate(contextMenu.value.position))
   contextMenu.value = null
@@ -320,7 +323,7 @@ function openContextMenu(event: MouseEvent) {
 
 function showNodeMenu(nodeId: string, position: XYPosition) {
   const node = nodes.value.find((item) => item.id === nodeId)
-  if (isSelecting.value || !ready.value || auth.status !== 'authenticated' || node?.type !== 'media') return
+  if (isSelecting.value || !ready.value || auth.status !== 'authenticated' || (node?.type !== 'media' && node?.type !== 'text')) return
   activePromptId.value = null
   activeMediaId.value = null
   addSelectedNodes([node])
@@ -365,6 +368,7 @@ onBeforeUnmount(() => { window.removeEventListener('blur', cancelCanvasLongPress
 
 function openNodeContextMenu({ event, node }: NodeMouseEvent) {
   if (!(event instanceof MouseEvent)) return
+  if (event.target instanceof Element && event.target.closest('textarea, input, [contenteditable]')) return
   event.preventDefault()
   event.stopPropagation()
   showNodeMenu(node.id, { x: event.clientX, y: event.clientY })
@@ -407,7 +411,10 @@ function resetViewport() {
     >
       <Background :gap="24" :size="1" pattern-color="#393c43" />
       <template #node-media="{ id, data, selected }">
-        <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :previewing="previewNodeId === id" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
+        <MediaNode :key="`${data.url ?? ''}:${data.previewAttempt ?? 0}`" :data="data" :selected="activePromptId ? activePromptId === id : selected" :previewing="previewNodeId === id" :reference-state="candidateState(id)" :has-references="!!data.referenceIds?.length || !!data.textReferenceIds?.length" :is-reference-source="referenceSources.has(id)" @loaded="mediaReady(id, $event)" @failed="failMedia(id)" @retry-save="saveUploadedNode(id)" @retry-preview="retryPreview(id)" />
+      </template>
+      <template #node-text="{ id, data, selected }">
+        <TextNode :data="data" :selected="selected" :disabled="auth.status !== 'authenticated'" :reference-state="candidateState(id)" :is-reference-source="referenceSources.has(id)" @activate="closeNodeTools" @update:text="updateText(id, $event)" />
       </template>
     </VueFlow>
     <NodeAlignmentGuides :guides="alignmentGuides" :viewport="viewport" />
@@ -469,7 +476,8 @@ function resetViewport() {
     <ReferenceSelectionBar
       v-if="referenceTarget"
       :allowed-kinds="referenceKinds"
-      :count="activeReferences.length"
+      :count="selectionKind === 'text' ? activeTextReferences.length : activeReferences.length"
+      :text-only="selectionKind === 'text'"
       :feedback="feedback"
       @return-to-node="returnToNode"
       @close="finishSelection"
@@ -496,6 +504,7 @@ function resetViewport() {
       :kind="activePromptNode.data.kind"
       :anchor="promptAnchor"
       :model-value="activePromptNode.data.prompt ?? ''"
+      :effective-prompt="effectivePromptFor(activePromptNode.id)"
       :prompt-parts="activePromptNode.data.promptParts"
       :candidates="mentionCandidatesFor(activePromptNode.id)"
       :add-reference="(sourceId) => addMentionReference(activePromptNode!.id, sourceId)"
@@ -507,7 +516,9 @@ function resetViewport() {
       :image-options="activePromptNode.data.imageOptions"
       :model-selection="activePromptNode.data.modelSelection"
       :references="activeReferences"
+      :text-references="activeTextReferences"
       :selecting-references="isSelecting"
+      :selection-kind="selectionKind"
       :can-generate="activeCanGenerate"
       :input-ready="activeInputReady"
       :editable="activePromptNode.data.origin !== 'upload'"
@@ -531,8 +542,10 @@ function resetViewport() {
       @update:image-options="updateImageOptions(activePromptNode.id, $event)"
       @choose-model="chooseNodeModel(activePromptNode!.id, $event)"
       @update:parameter="(key, value) => updateModelParameter(activePromptNode!.id, key, value)"
-      @select-references="selectReferences"
+      @select-references="selectReferences('media')"
+      @select-text-references="selectReferences('text')"
       @remove-reference="removeReference(activePromptNode.id, $event)"
+      @remove-text-reference="removeTextReference(activePromptNode.id, $event)"
       @generate="generateActiveNode"
       @retry-quote="refreshQuote"
       @retry-storage="activePromptNode.data.generation?.taskId && retryVideoStorage(activePromptNode.data.generation.taskId)"

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { mediaKindLabel, type MediaKind } from '../canvas/media'
 
-const props = defineProps<{ allowedKinds: readonly MediaKind[]; count: number; feedback: string }>()
+const props = defineProps<{ allowedKinds: readonly MediaKind[]; count: number; feedback: string; textOnly?: boolean }>()
 const emit = defineEmits<{ returnToNode: []; close: [] }>()
 const mediaLabel = computed(() => {
   const labels = props.allowedKinds.map((kind) => mediaKindLabel[kind])
@@ -15,7 +15,7 @@ const mediaLabel = computed(() => {
     <svg class="reference-selection-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m20 4-6 16-4-6-6-4L20 4ZM10 14 20 4" /></svg>
     <div class="reference-selection-copy">
       <strong>从画布选择参考</strong>
-      <span role="status" aria-live="polite">{{ feedback || `可选${mediaLabel} · 已选 ${count} 项` }}</span>
+      <span role="status" aria-live="polite">{{ feedback || `可选${textOnly ? '文本' : mediaLabel} · 已选 ${count} 项` }}</span>
     </div>
     <button class="reference-return" type="button" @click="emit('returnToNode')">返回节点</button>
     <button class="reference-close" type="button" aria-label="结束参考选择" title="结束选择（Esc），保留已选参考" @click="emit('close')">
@@ -25,7 +25,7 @@ const mediaLabel = computed(() => {
 </template>
 
 <style scoped>
-.reference-selection-bar { position: fixed; z-index: 25; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 32px); padding: 10px 12px; border: 1px solid #5793ff; border-radius: 14px; background: #2469ed; box-shadow: 0 6px 24px #0003; color: #fff; }
+.reference-selection-bar { position: fixed; z-index: 40; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 32px); padding: 10px 12px; border: 1px solid #5793ff; border-radius: 14px; background: #2469ed; box-shadow: 0 6px 24px #0003; color: #fff; }
 .reference-selection-icon { flex: none; width: 32px; height: 32px; padding: 6px; border-radius: 8px; background: #ffffff20; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 .reference-selection-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 360px; }
 .reference-selection-copy strong { font-size: 13px; font-weight: 600; }

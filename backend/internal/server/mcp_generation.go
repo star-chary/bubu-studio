@@ -418,7 +418,11 @@ func (g *mcpGateway) generationInput(ctx context.Context, userID, canvasID, node
 		return 0, "", input, persistence.ErrInvalid
 	}
 	kind := node.Data.Kind
-	input = persistence.Input{CanvasID: canvasID, NodeID: nodeID, Prompt: node.Data.Prompt, PromptParts: node.Data.PromptParts}
+	prompt, parts, err := canvas.Snapshot.EffectivePrompt(*node)
+	if err != nil {
+		return 0, "", input, err
+	}
+	input = persistence.Input{CanvasID: canvasID, NodeID: nodeID, Prompt: prompt, PromptParts: parts}
 	if strings.TrimSpace(input.Prompt) == "" || utf8.RuneCountInString(strings.TrimSpace(input.Prompt)) > 2000 {
 		return 0, "", input, persistence.ErrInvalid
 	}

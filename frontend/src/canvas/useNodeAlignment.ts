@@ -2,6 +2,8 @@ import { onBeforeUnmount, onMounted, shallowRef, watch, type Ref } from 'vue'
 import { useVueFlow, type NodeDragEvent } from '@vue-flow/core'
 import { getPreviewRect } from './media'
 import { alignPreview, type AlignmentGuide, type AlignmentState } from './nodeAlignment'
+import { TEXT_NODE_HEIGHT, TEXT_NODE_WIDTH } from './textNode'
+import { MEDIA_NODE_HEADER_HEIGHT } from './media'
 
 export function useNodeAlignment(flowId: string, enabled: Ref<boolean>) {
   const { nodes, viewport, updateNode } = useVueFlow(flowId)
@@ -21,7 +23,7 @@ export function useNodeAlignment(flowId: string, enabled: Ref<boolean>) {
 
   function start({ node, nodes: dragged }: NodeDragEvent) {
     stop()
-    if (enabled.value && node?.type === 'media' && dragged.length === 1) draggingId = node.id
+    if (enabled.value && (node?.type === 'media' || node?.type === 'text') && dragged.length === 1) draggingId = node.id
   }
 
   function drag({ node }: NodeDragEvent) {
@@ -29,9 +31,12 @@ export function useNodeAlignment(flowId: string, enabled: Ref<boolean>) {
     // 当前画布是平铺节点。Vue Flow 每次先按指针写入原始 position，再发出 drag。
     // 必须替换 position 对象，不能原地修改：内部拖动记录仍需保留原始位置，才能自然脱离吸附。
     const raw = node.position
-    const targets = nodes.value.filter((other) => other.id !== node.id && other.type === 'media' && !other.hidden)
-      .map((other) => ({ id: other.id, ...getPreviewRect(other.position, other.data) }))
-    const result = alignPreview(getPreviewRect(raw, node.data), targets, viewport.value.zoom, matches)
+    const rect = (item: typeof node) => item.type === 'text'
+      ? { x: item.position.x, y: item.position.y + MEDIA_NODE_HEADER_HEIGHT, width: TEXT_NODE_WIDTH, height: TEXT_NODE_HEIGHT }
+      : getPreviewRect(item.position, item.data)
+    const targets = nodes.value.filter((other) => other.id !== node.id && (other.type === 'media' || other.type === 'text') && !other.hidden)
+      .map((other) => ({ id: other.id, ...rect(other) }))
+    const result = alignPreview(rect(node), targets, viewport.value.zoom, matches)
     matches = result.matches
     guides.value = result.guides
     if (result.offset.x || result.offset.y) updateNode(node.id, { position: { x: raw.x + result.offset.x, y: raw.y + result.offset.y } })

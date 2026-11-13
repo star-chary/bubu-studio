@@ -8,7 +8,7 @@ import { useCanvasSession } from './useCanvasSession'
 import { submitTask, retryTaskStorage, type GenerationTask, type TaskInput, type TaskReference } from '../api/persistence'
 import { VIDEO_MODEL, normalizeVideoOptions, type VideoMode, type VideoModelId, type VideoOptions } from '../models/videoModels'
 import { apimartReferencesError, videoReferencesError } from './videoReferences'
-import { hasPromptReferences, normalizeParts, promptText, type PromptPart } from './prompt'
+import { draftParts, hasPromptReferences, normalizeParts, promptText, type PromptPart } from './prompt'
 import { normalizeParametersFor, parameterValuesFor, referenceCapability, validParameterValue, type ModelSelection } from '../models/modelCatalog'
 import { MODEL_CONFIG_VERSION, catalogModelFor } from '../models/staticModelCatalog'
 import { apimartVideoEnabled, apimartVideoInput } from '../models/apimartVideo'
@@ -16,9 +16,10 @@ import { apimartImageCount, apimartImageEnabled, apimartImageInput, apimartImage
 import { apimartImageDefinition } from '../models/apimartImageDefinitions'
 import { apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
+import type { TextNodeData } from './textNode'
 
 interface AcceptedGeneration { input: TaskInput; quote?: CreditQuote; count?: number }
-interface CopiedNode { data: MediaNodeData; file?: File }
+interface CopiedNode { data: MediaNodeData | TextNodeData; file?: File }
 
 export function useMediaNodes(flowId: string, requestedId: string, temporary: boolean) {
   const { nodes, addNodes, removeNodes, findNode, updateNodeData } = useVueFlow(flowId)
@@ -37,11 +38,11 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   let disposed = false
   let sequence = 0
 
-  function appendNode(data: MediaNodeData, position: XYPosition) {
+  function appendNode(data: MediaNodeData | TextNodeData, position: XYPosition) {
     const id = crypto.randomUUID()
-    const node: Node<MediaNodeData> = {
+    const node: Node<MediaNodeData | TextNodeData> = {
       id,
-      type: 'media',
+      type: data.kind === 'text' ? 'text' : 'media',
       position: { ...position },
       data,
       connectable: false,
@@ -51,8 +52,16 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     return id
   }
 
-  function createEmptyNode(kind: Exclude<MediaKind, 'audio'>, position: XYPosition) {
-    sequence = Math.max(sequence, ...nodes.value.map((node) => Number(/^(?:图片|视频)节点 (\d+)$/.exec(node.data.name)?.[1] ?? 0))) + 1
+  function createEmptyNode(kind: Exclude<MediaKind, 'audio'> | 'text', position: XYPosition) {
+    if (nodes.value.length >= 300) {
+      importNotice.value = '每个画布最多 300 个节点，请先清理节点。'
+      return
+    }
+    sequence = Math.max(sequence, ...nodes.value.map((node) => Number(/^(?:图片|视频|文本)节点 (\d+)$/.exec(node.data.name)?.[1] ?? 0))) + 1
+    if (kind === 'text') {
+      appendNode({ kind, name: `文本节点 ${sequence}`, text: '' }, position)
+      return
+    }
     // 新节点由用户明确选择供应商和型号，不自动回退到 Ark 默认模型。
     appendNode({ kind, name: `${kind === 'image' ? '图片' : '视频'}节点 ${sequence}`, status: 'empty',
       modelSelection: { provider: 'apimart', modelId: '', parameters: {} },
@@ -61,14 +70,19 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function copyNode(id: string, keepReferences: boolean) {
     const node = findNode(id)
-    if (!node || node.type !== 'media') return
+    if (!node || (node.type !== 'media' && node.type !== 'text')) return
     // Freeze the node draft and displayed result at the moment of copying.
     // Runtime task state is deliberately excluded from the clipboard.
-    const data = JSON.parse(JSON.stringify(node.data)) as MediaNodeData
+    const data = JSON.parse(JSON.stringify(node.data)) as MediaNodeData | TextNodeData
+    if (data.kind === 'text') {
+      copiedNode.value = { data }
+      return
+    }
     data.generation = undefined
     data.previewAttempt = undefined
     if (!keepReferences) {
       data.referenceIds = []
+      data.textReferenceIds = []
       data.firstFrameId = undefined
       // The plain prompt already contains the displayed @ labels.
       data.promptParts = undefined
@@ -83,14 +97,21 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
       importNotice.value = '每个画布最多 300 个节点，请先清理节点。'
       return
     }
-    const data = JSON.parse(JSON.stringify(clipboard.data)) as MediaNodeData
+    const data = JSON.parse(JSON.stringify(clipboard.data)) as MediaNodeData | TextNodeData
     data.name = `${Array.from(data.name).slice(0, 252).join('')} 副本`
+    if (data.kind === 'text') {
+      appendNode(data, position)
+      return
+    }
     data.generation = undefined
     const originalReferences = data.referenceIds ?? []
+    const originalTextReferences = data.textReferenceIds ?? []
     data.referenceIds = originalReferences.filter((id) => !!findNode(id))
+    data.textReferenceIds = originalTextReferences.filter((id) => findNode(id)?.type === 'text')
     if (data.firstFrameId && !data.referenceIds.includes(data.firstFrameId)) data.firstFrameId = undefined
     const messages: string[] = []
     if (data.referenceIds.length !== originalReferences.length) messages.push('部分参考节点已不存在，请重新选择参考素材。')
+    if (data.textReferenceIds.length !== originalTextReferences.length) messages.push('部分文本节点已不存在，请重新选择参考文本。')
 
     const file = clipboard.file
     const sourceKey = data.copySourceKey ?? (data.storage?.status === 'saved' ? data.asset?.key : undefined)
@@ -130,6 +151,11 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function deleteNodes(ids: string[]) {
     removeNodes(ids)
+    for (const node of nodes.value) {
+      if (node.type === 'media' && node.data.textReferenceIds?.some((id: string) => ids.includes(id))) {
+        updateNodeData(node.id, { textReferenceIds: node.data.textReferenceIds.filter((id: string) => !ids.includes(id)) })
+      }
+    }
     for (const id of ids) {
       uploadRequests.get(id)?.abort()
       copyRequests.get(id)?.abort()
@@ -147,6 +173,10 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
   function updatePrompt(id: string, parts: PromptPart[]) {
     const normalized = normalizeParts(parts)
     if (findNode(id)) updateNodeData(id, { prompt: promptText(normalized), promptParts: hasPromptReferences(normalized) ? normalized : undefined })
+  }
+
+  function updateText(id: string, text: string) {
+    if (findNode(id)?.type === 'text') updateNodeData(id, { text })
   }
 
   function updateImageModel(id: string, imageModel: ImageModelId) {
@@ -237,9 +267,25 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
     return { keys, error: '' }
   }
 
+  function effectivePromptPartsFor(id: string): PromptPart[] {
+    const node = findNode(id)
+    if (!node || node.type !== 'media') return []
+    const text = (node.data.textReferenceIds ?? []).map((sourceId: string) => {
+      const source = findNode(sourceId)
+      return source?.type === 'text' ? (source.data.text ?? '') as string : ''
+    }).filter((value: string) => value.trim()).join('\n\n')
+    const own = draftParts(node.data)
+    return normalizeParts([...(text ? [{ type: 'text' as const, text: text + (promptText(own).trim() ? '\n\n' : '') }] : []), ...own])
+  }
+
+  function effectivePromptFor(id: string) {
+    return promptText(effectivePromptPartsFor(id))
+  }
+
   function referenceErrorFor(id: string) {
     const target = findNode(id)
     if (!target) return ''
+    if ((target.data.textReferenceIds ?? []).some((sourceId: string) => findNode(sourceId)?.type !== 'text')) return '引用的文本节点已不存在，请重新选择'
     const mode = target.data.modelSelection ? compatibleVideoMode(target.data.videoMode ?? 'reference', apimartVideoModes(target.data.modelSelection.modelId)) : target.data.videoMode
     // 已接入的文生模式忽略素材连线，但不能提交提示词中的素材标签。
     if (target.data.kind === 'video' && (!target.data.modelSelection || apimartVideoEnabled(target.data.modelSelection)) && mode === 'text') {
@@ -276,11 +322,12 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   function generationInputFor(id: string): TaskInput | null {
     const node = findNode(id)
-    if (!session.ready.value || !session.enabled.value || !node || node.data.copySourceKey || node.data.origin === 'upload' || node.data.kind === 'audio') return null
+    if (!session.ready.value || !session.enabled.value || !node || node.type !== 'media' || node.data.copySourceKey || node.data.origin === 'upload' || node.data.kind === 'audio') return null
     const apimart = node.data.kind === 'video' ? apimartVideoEnabled(node.data.modelSelection) : apimartImageEnabled(node.data.modelSelection)
     if (node.data.modelSelection && !apimart) return null
-    const prompt = node.data.promptParts?.length ? (node.data.prompt ?? '') : (node.data.prompt ?? '').trim()
-    const promptParts = node.data.promptParts?.map((part: PromptPart) => ({ ...part }))
+    const parts = effectivePromptPartsFor(id)
+    const prompt = node.data.promptParts?.length ? promptText(parts) : promptText(parts).trim()
+    const promptParts = node.data.promptParts?.length ? parts : undefined
     if ([...prompt.trim()].length > 2000 || referenceErrorFor(id)) return null
     if (node.data.kind === 'image') {
       if (!prompt) return null
@@ -352,10 +399,10 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
         return position.x < other.position.x + size.width + 24 && position.x + 504 > other.position.x
           && position.y < other.position.y + size.height + 48 && position.y + 348 > other.position.y
       }))
-      ids.push(appendNode({ kind: 'image', name: `${node.data.name} · ${index + 1}`, status: 'empty', prompt,
-        promptParts: input.promptParts?.map((part) => ({ ...part })), imageModel: node.data.imageModel,
+      ids.push(appendNode({ kind: 'image', name: `${node.data.name} · ${index + 1}`, status: 'empty', prompt: node.data.prompt,
+        promptParts: node.data.promptParts?.map((part: PromptPart) => ({ ...part })), imageModel: node.data.imageModel,
         ...(node.data.modelSelection ? { modelSelection: { ...node.data.modelSelection, parameters: { ...node.data.modelSelection.parameters, ...(node.data.modelSelection.parameters.n !== undefined ? { n: 1 } : {}) } } } : {}),
-        imageOptions: { ...options, count: 1 }, referenceIds: [...(node.data.referenceIds ?? [])] }, position))
+        imageOptions: { ...options, count: 1 }, referenceIds: [...(node.data.referenceIds ?? [])], textReferenceIds: [...(node.data.textReferenceIds ?? [])] }, position))
     }
     const jobs = ids.map((nodeId) => ({ nodeId, taskId: crypto.randomUUID(), controller: new AbortController() }))
     for (const job of jobs) {
@@ -648,5 +695,5 @@ export function useMediaNodes(flowId: string, requestedId: string, temporary: bo
 
   const hasLocalMedia = () => uploadFiles.size > 0
   const isSubmitting = () => generationRequests.size > 0
-  return { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
+  return { nodes, session, importNotice, copiedNode, copyNode, pasteNode, createEmptyNode, deleteNodes, importFiles, mediaReady, failMedia, retryPreview, updateText, updatePrompt, updateImageModel, updateImageOptions, updateVideoModel, updateVideoMode, updateFirstFrame, updateVideoOptions, updateModelSelection, updateModelParameter, effectivePromptFor, generationInputFor, generateNode, retryVideoStorage, saveUploadedNode, referenceErrorFor, hasLocalMedia, isSubmitting }
 }

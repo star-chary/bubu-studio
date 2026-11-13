@@ -15,6 +15,37 @@ type PromptPart struct {
 	Name   string `json:"name,omitempty"`
 }
 
+// EffectivePrompt freezes the currently linked texts before a generation task
+// is submitted. Media mentions remain structured and are compiled separately.
+func (s Snapshot) EffectivePrompt(node Node) (string, []PromptPart, error) {
+	texts := make([]string, 0, len(node.Data.TextReferenceIDs))
+	for _, id := range node.Data.TextReferenceIDs {
+		var source *Node
+		for i := range s.Nodes {
+			if s.Nodes[i].ID == id {
+				source = &s.Nodes[i]
+				break
+			}
+		}
+		if source == nil || source.Data.Kind != "text" {
+			return "", nil, ErrInvalid
+		}
+		if strings.TrimSpace(source.Data.Text) != "" {
+			texts = append(texts, source.Data.Text)
+		}
+	}
+	prefix := strings.Join(texts, "\n\n")
+	if prefix != "" && strings.TrimSpace(node.Data.Prompt) != "" {
+		prefix += "\n\n"
+	}
+	prompt := prefix + node.Data.Prompt
+	parts := append([]PromptPart(nil), node.Data.PromptParts...)
+	if prefix != "" && len(parts) > 0 {
+		parts = append([]PromptPart{{Type: "text", Text: prefix}}, parts...)
+	}
+	return prompt, parts, nil
+}
+
 func (n NodeData) HasPromptReferences() bool {
 	for _, part := range n.PromptParts {
 		if part.Type == "reference" {

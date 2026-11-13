@@ -25,6 +25,7 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
   const hasMore = ref(false)
   const historyLoading = ref(false)
   let version = 0
+  const formatVersion = ref(0)
   let saved = ''
   let disposed = false
   let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -35,10 +36,13 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
 
   function snapshot(): CanvasSnapshot {
     return {
-      nodes: nodes.value.map(({ id, position, data }) => ({ id, position: { x: position.x, y: position.y }, data: {
+      ...(nodes.value.some((node) => node.data.kind === 'text') || formatVersion.value ? { formatVersion: 1 } : {}),
+      nodes: nodes.value.map(({ id, position, data }) => ({ id, position: { x: position.x, y: position.y }, data: data.kind === 'text' ? {
+        kind: 'text' as const, name: data.name, text: data.text ?? '',
+      } : {
         kind: data.kind, name: data.name, prompt: data.prompt ?? '', imageModel: data.imageModel, imageOptions: data.imageOptions,
         promptParts: data.promptParts, videoModel: data.videoModel, videoMode: data.videoMode, firstFrameId: data.firstFrameId, videoOptions: data.videoOptions,
-        modelSelection: data.modelSelection, origin: data.origin, referenceIds: [...(data.referenceIds ?? [])], copySourceKey: data.copySourceKey,
+        modelSelection: data.modelSelection, origin: data.origin, referenceIds: [...(data.referenceIds ?? [])], textReferenceIds: data.textReferenceIds?.length ? [...data.textReferenceIds] : undefined, copySourceKey: data.copySourceKey,
       } })),
       viewport: { ...viewport.value },
     }
@@ -62,6 +66,7 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
           const value = serial.value
           const response = await writeJSON<{ version: number }>(`/api/canvases/${canvasId.value}`, { version, snapshot: JSON.parse(value) }, 'PUT')
           version = response.version
+          formatVersion.value = Math.max(formatVersion.value, JSON.parse(value).formatVersion ?? 0)
           saved = value
         }
         dirty.value = serial.value !== saved
@@ -135,7 +140,9 @@ export function useCanvasSession(flowId: string, requestedId: string, temporary:
       if (disposed) return
       title.value = canvas.title || '未命名画布'
       version = canvas.version
+      formatVersion.value = canvas.snapshot.formatVersion ?? 0
       setNodes(canvas.snapshot.nodes.map((node) => {
+        if (node.data.kind === 'text') return { ...node, type: 'text', data: { ...node.data, text: node.data.text ?? '' }, connectable: false, ariaLabel: node.data.name }
         const asset = canvas.assets.find((a) => a.nodeId === node.id)
         const result = canvas.results.find((t) => t.input.nodeId === node.id)?.result
         const mediaURL = result?.url ?? asset?.url ?? (node.data.copySourceKey ? `/api/assets/content?key=${encodeURIComponent(node.data.copySourceKey)}` : undefined)

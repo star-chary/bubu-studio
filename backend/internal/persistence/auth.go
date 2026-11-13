@@ -166,7 +166,9 @@ func (s *Store) SaveOwnedCanvas(ctx context.Context, id, userID string, version 
 		return 0, err
 	}
 	var next int64
-	err := s.Pool.QueryRow(ctx, `UPDATE canvases SET snapshot=$4,version=version+1,updated_at=now() WHERE id=$1 AND owner_user_id=$2 AND version=$3 RETURNING version`, id, userID, version, snapshot).Scan(&next)
+	// Older clients omit new snapshot fields. Once a canvas contains text nodes,
+	// reject a format downgrade atomically even if that client loaded the latest version.
+	err := s.Pool.QueryRow(ctx, `UPDATE canvases SET snapshot=$4,version=version+1,updated_at=now() WHERE id=$1 AND owner_user_id=$2 AND version=$3 AND COALESCE((snapshot->>'formatVersion')::int,0) <= $5 RETURNING version`, id, userID, version, snapshot, snapshot.FormatVersion).Scan(&next)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrConflict
 	}

@@ -3,7 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { MediaKind } from '../canvas/media'
 
 const props = defineProps<{ position: { x: number; y: number }; target?: 'canvas' | 'node'; canPaste?: boolean }>()
-const emit = defineEmits<{ close: []; upload: []; addNode: [kind: Exclude<MediaKind, 'audio'>]; deleteNode: []; copyNode: [keepReferences: boolean]; paste: [] }>()
+const emit = defineEmits<{ close: []; upload: []; addNode: [kind: Exclude<MediaKind, 'audio'> | 'text']; deleteNode: []; copyNode: [keepReferences: boolean]; paste: [] }>()
 
 const panel = ref<HTMLDivElement | null>(null)
 const screen = ref<'main' | 'nodes'>('main')
@@ -110,6 +110,10 @@ onBeforeUnmount(() => {
     </template>
     <template v-else>
       <div class="context-menu-title">添加节点</div>
+      <button type="button" role="menuitem" tabindex="-1" @click="emit('addNode', 'text')">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12M10 4v12M7 16h6" /></svg>
+        文本
+      </button>
       <button type="button" role="menuitem" tabindex="-1" @click="emit('addNode', 'image')">
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <rect x="3" y="3" width="14" height="14" rx="2" />

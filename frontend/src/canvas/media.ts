@@ -51,6 +51,8 @@ export interface MediaNodeData {
   }
   // 目标节点引用的素材 ID；缩略图与连线均由这里派生，不复制素材数据。
   referenceIds?: string[]
+  // 文本引用与文件素材分开；提交生成时将文字展开到提示词快照。
+  textReferenceIds?: string[]
 }
 
 export interface MediaReference {

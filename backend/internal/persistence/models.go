@@ -58,19 +58,21 @@ type ModelSelection struct {
 	Parameters     map[string]any `json:"parameters,omitempty"`
 }
 type NodeData struct {
-	ImageOptions   *ImageNodeOptions `json:"imageOptions,omitempty"`
-	VideoOptions   *VideoOptions     `json:"videoOptions,omitempty"`
-	VideoModel     string            `json:"videoModel,omitempty"`
-	VideoMode      string            `json:"videoMode,omitempty"`
-	FirstFrameID   string            `json:"firstFrameId,omitempty"`
-	Kind           string            `json:"kind"`
-	Name           string            `json:"name"`
-	Prompt         string            `json:"prompt,omitempty"`
-	PromptParts    []PromptPart      `json:"promptParts,omitempty"`
-	ImageModel     string            `json:"imageModel,omitempty"`
-	ModelSelection *ModelSelection   `json:"modelSelection,omitempty"`
-	Origin         string            `json:"origin,omitempty"`
-	ReferenceIDs   []string          `json:"referenceIds,omitempty"`
+	ImageOptions     *ImageNodeOptions `json:"imageOptions,omitempty"`
+	VideoOptions     *VideoOptions     `json:"videoOptions,omitempty"`
+	VideoModel       string            `json:"videoModel,omitempty"`
+	VideoMode        string            `json:"videoMode,omitempty"`
+	FirstFrameID     string            `json:"firstFrameId,omitempty"`
+	Kind             string            `json:"kind"`
+	Name             string            `json:"name"`
+	Text             string            `json:"text,omitempty"`
+	Prompt           string            `json:"prompt,omitempty"`
+	PromptParts      []PromptPart      `json:"promptParts,omitempty"`
+	ImageModel       string            `json:"imageModel,omitempty"`
+	ModelSelection   *ModelSelection   `json:"modelSelection,omitempty"`
+	Origin           string            `json:"origin,omitempty"`
+	ReferenceIDs     []string          `json:"referenceIds,omitempty"`
+	TextReferenceIDs []string          `json:"textReferenceIds,omitempty"`
 	// A pending, authenticated copy from an immutable asset in the same canvas.
 	CopySourceKey string `json:"copySourceKey,omitempty"`
 }
@@ -80,8 +82,9 @@ type Node struct {
 	Data     NodeData `json:"data"`
 }
 type Snapshot struct {
-	Nodes    []Node   `json:"nodes"`
-	Viewport Viewport `json:"viewport"`
+	Nodes         []Node   `json:"nodes"`
+	Viewport      Viewport `json:"viewport"`
+	FormatVersion int      `json:"formatVersion,omitempty"`
 }
 type Canvas struct {
 	ID        string          `json:"id"`
@@ -212,15 +215,25 @@ func validateModelSelection(sel *ModelSelection) error {
 
 func (s Snapshot) Validate() error {
 	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && math.Abs(v) <= 1e7 }
-	if s.Nodes == nil || len(s.Nodes) > 300 || !finite(s.Viewport.X) || !finite(s.Viewport.Y) || s.Viewport.Zoom < .25 || s.Viewport.Zoom > 20 {
+	if s.Nodes == nil || len(s.Nodes) > 300 || !finite(s.Viewport.X) || !finite(s.Viewport.Y) || s.Viewport.Zoom < .25 || s.Viewport.Zoom > 20 || s.FormatVersion < 0 || s.FormatVersion > 1 {
 		return ErrInvalid
 	}
 	nodes := map[string]Node{}
 	for _, n := range s.Nodes {
-		if !ValidID(n.ID) || !finite(n.Position.X) || !finite(n.Position.Y) || (n.Data.Kind != "image" && n.Data.Kind != "video" && n.Data.Kind != "audio") || utf8.RuneCountInString(n.Data.Name) > 255 || strings.TrimSpace(n.Data.Name) == "" || utf8.RuneCountInString(n.Data.Prompt) > 10000 {
+		if !ValidID(n.ID) || !finite(n.Position.X) || !finite(n.Position.Y) || (n.Data.Kind != "image" && n.Data.Kind != "video" && n.Data.Kind != "audio" && n.Data.Kind != "text") || utf8.RuneCountInString(n.Data.Name) > 255 || strings.TrimSpace(n.Data.Name) == "" || utf8.RuneCountInString(n.Data.Prompt) > 10000 || utf8.RuneCountInString(n.Data.Text) > 10000 {
 			return ErrInvalid
 		}
 		if _, ok := nodes[n.ID]; ok {
+			return ErrInvalid
+		}
+		if n.Data.Kind == "text" {
+			if s.FormatVersion < 1 || n.Data.Prompt != "" || len(n.Data.PromptParts) != 0 || n.Data.ImageOptions != nil || n.Data.ImageModel != "" || n.Data.VideoOptions != nil || n.Data.VideoModel != "" || n.Data.VideoMode != "" || n.Data.FirstFrameID != "" || n.Data.ModelSelection != nil || n.Data.Origin != "" || n.Data.CopySourceKey != "" || len(n.Data.ReferenceIDs) != 0 || len(n.Data.TextReferenceIDs) != 0 {
+				return ErrInvalid
+			}
+			nodes[n.ID] = n
+			continue
+		}
+		if n.Data.Text != "" || (len(n.Data.TextReferenceIDs) > 0 && (s.FormatVersion < 1 || n.Data.Kind == "audio" || n.Data.Origin == "upload")) {
 			return ErrInvalid
 		}
 		// 目录草稿节点只做结构校验，不套用 Ark 的模型白名单、分辨率与时长规则。
@@ -279,10 +292,18 @@ func (s Snapshot) Validate() error {
 		seen := map[string]bool{}
 		for _, id := range n.Data.ReferenceIDs {
 			source, ok := nodes[id]
-			if !ok || id == n.ID || seen[id] || (n.Data.Kind == "image" && source.Data.Kind != "image") {
+			if !ok || id == n.ID || seen[id] || source.Data.Kind == "text" || (n.Data.Kind == "image" && source.Data.Kind != "image") {
 				return ErrInvalid
 			}
 			seen[id] = true
+		}
+		textSeen := map[string]bool{}
+		for _, id := range n.Data.TextReferenceIDs {
+			source, ok := nodes[id]
+			if !ok || source.Data.Kind != "text" || id == n.ID || textSeen[id] {
+				return ErrInvalid
+			}
+			textSeen[id] = true
 		}
 		if n.Data.FirstFrameID != "" {
 			source, ok := nodes[n.Data.FirstFrameID]

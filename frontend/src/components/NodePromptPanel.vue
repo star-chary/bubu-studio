@@ -14,12 +14,14 @@ import { catalogModelFor } from '../models/staticModelCatalog'
 import { apimartVideoEnabled } from '../models/apimartVideo'
 import { apimartVideoDefinition, apimartVideoModes, compatibleVideoMode } from '../models/apimartVideoDefinitions'
 import type { CreditQuote } from '../api/credits'
+import type { TextReference } from '../canvas/textNode'
 
 const props = defineProps<{
   nodeId: string
   nodeName: string
   kind: MediaKind
   modelValue: string
+  effectivePrompt: string
   promptParts?: PromptPart[]
   candidates: MentionCandidate[]
   addReference: (id: string) => string
@@ -31,7 +33,9 @@ const props = defineProps<{
   imageOptions?: ImageOptions
   modelSelection?: ModelSelection
   references: MediaReference[]
+  textReferences: TextReference[]
   selectingReferences: boolean
+  selectionKind: 'media' | 'text'
   canGenerate: boolean
   inputReady: boolean
   editable: boolean
@@ -56,7 +60,9 @@ const emit = defineEmits<{
   'update:parameter': [key: string, value: unknown]
   close: []
   selectReferences: []
+  selectTextReferences: []
   removeReference: [sourceId: string]
+  removeTextReference: [sourceId: string]
   generate: []
   retryStorage: []
   retryQuote: []
@@ -82,7 +88,7 @@ const apimartImage = computed(() => props.kind === 'image' && provider.value ===
 const textVideo = computed(() => props.kind === 'video' && (provider.value === 'ark' || apimartVideo.value) && selectedVideoMode.value === 'text')
 
 const generating = computed(() => props.generation?.status === 'generating')
-const promptLength = computed(() => [...props.modelValue.trim()].length)
+const promptLength = computed(() => [...props.effectivePrompt.trim()].length)
 const hasMentions = computed(() => hasPromptReferences(props.promptParts))
 const mentionError = computed(() => textVideo.value ? '' : props.promptParts?.some((part) => part.type === 'reference' && !props.candidates.some((c) => c.id === part.nodeId && c.selected && !c.error)) ? '提示词中的素材标签已失效，请重新选择参考素材' : '')
 const selectedVideoModel = computed(() => props.videoModel ?? VIDEO_MODEL)
@@ -129,7 +135,7 @@ const layout = computed(() => {
   const width = Math.min(expanded.value ? 840 : 660, windowSize.value.width - margin * 2)
   const videoHeight = (windowSize.value.width <= 600 ? 306 : 242) + (props.references.length ? 70 : 0)
   const imageHeight = (props.references.length ? 282 : 222) + (windowSize.value.width <= 600 ? 38 : 0)
-  const baseHeight = props.kind === 'video' ? videoHeight + 28 : imageHeight
+  const baseHeight = (props.kind === 'video' ? videoHeight + 28 : imageHeight) + (props.textReferences.length ? 40 : 0)
   const maxX = windowSize.value.width - width - margin
   const below = props.anchor.y + props.anchor.height + 12
   // 放大时优先使用节点下方的可见空间，至少保留基础高度。
@@ -218,9 +224,13 @@ onBeforeUnmount(() => {
   >
     <header class="prompt-panel-header">
       <h2 id="node-prompt-title" class="prompt-accessible-title">{{ title }}</h2>
-      <button class="prompt-reference-button" :class="{ 'is-active': selectingReferences }" type="button" :aria-pressed="selectingReferences" :disabled="textVideo" :title="textVideo ? '切换到全能参考后添加素材' : '添加参考素材'" @click="emit('selectReferences')">
+      <button class="prompt-reference-button" :class="{ 'is-active': selectingReferences && selectionKind === 'media' }" type="button" :aria-pressed="selectingReferences && selectionKind === 'media'" :disabled="textVideo" :title="textVideo ? '切换到全能参考后添加素材' : '添加参考素材'" @click="emit('selectReferences')">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
         参考
+      </button>
+      <button class="prompt-reference-button" :class="{ 'is-active': selectingReferences && selectionKind === 'text' }" type="button" :aria-pressed="selectingReferences && selectionKind === 'text'" title="连接文本节点作为提示词" @click="emit('selectTextReferences')">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
+        文本
       </button>
       <span class="prompt-node-label" :title="nodeName">
         <svg v-if="kind === 'image'" viewBox="0 0 20 20" aria-hidden="true">
@@ -257,6 +267,13 @@ onBeforeUnmount(() => {
         <button v-if="imageVideo && reference.kind === 'image'" type="button" class="first-frame-select" :aria-label="`选为起始图片 ${reference.name}`" :aria-pressed="reference.id === firstFrameId" @click="emit('update:firstFrame', reference.id)">{{ reference.id === firstFrameId ? '起始图' : '设为起始图' }}</button>
         <span v-if="reference.error" class="reference-warning" :aria-label="reference.error">!</span>
         <button class="reference-remove" type="button" :aria-label="`移除参考 ${reference.name}`" @click="emit('removeReference', reference.id)">×</button>
+      </li>
+    </ol>
+    <ol v-if="textReferences.length" class="text-references" aria-label="已连接文本，按顺序放在当前提示词前">
+      <li class="text-references-hint">提示词前：</li>
+      <li v-for="(reference, index) in textReferences" :key="reference.id" class="text-reference" :title="reference.text || '空文本'">
+        <span>{{ index + 1 }}. {{ reference.name }}</span>
+        <button type="button" :aria-label="`移除文本 ${reference.name}`" @click="emit('removeTextReference', reference.id)">×</button>
       </li>
     </ol>
     <PromptEditor
@@ -326,6 +343,12 @@ onBeforeUnmount(() => {
 .prompt-reference-button.is-active { background: #29436b; color: #bdd4ff; }
 .prompt-reference-button:disabled { opacity: .5; cursor: not-allowed; }
 .prompt-reference-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.text-references { display: flex; flex: none; align-items: center; gap: 6px; overflow-x: auto; margin: 8px 0 0; padding: 2px 0; list-style: none; scrollbar-width: thin; }
+.text-references-hint { flex: none; color: #a5a5a5; font-size: 11px; }
+.text-reference { display: inline-flex; flex: none; align-items: center; gap: 5px; max-width: 180px; padding: 3px 5px 3px 8px; border: 1px solid #505761; border-radius: 7px; background: #30353c; color: #d6e2f2; font-size: 11px; }
+.text-reference span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.text-reference button { flex: none; padding: 0 3px; border: 0; background: none; color: #c4d1e1; font-size: 15px; cursor: pointer; }
+.text-reference button:focus-visible { outline: 2px solid #bdd4ff; outline-offset: 1px; }
 .prompt-references { display: flex; flex: none; gap: 10px; overflow-x: auto; max-width: 100%; margin: 8px 0 0; padding: 4px 2px; list-style: none; scrollbar-width: thin; scrollbar-color: #555 transparent; }
 .prompt-references.is-inactive { opacity: .52; }
 .prompt-reference { position: relative; flex: none; width: 48px; height: 48px; border: 1px solid #525252; border-radius: 8px; background: #1a1a1a; }

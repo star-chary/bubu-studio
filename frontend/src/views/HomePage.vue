@@ -129,7 +129,7 @@ watch(() => props.authenticated, (value) => { if (value) void load(); else canva
                 <g v-for="(node, index) in preview(canvas)" :key="index" :class="`preview-${node.kind}`">
                   <rect :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="3" />
                   <path :d="`M${node.x + node.width * .2} ${node.y + node.height * .75}h${node.width * .6}`" />
-                  <text v-if="node.width > 32" :x="node.x + node.width / 2" :y="node.y + node.height * .48" text-anchor="middle">{{ node.kind === 'image' ? '图片' : node.kind === 'video' ? '视频' : '音频' }}</text>
+                  <text v-if="node.width > 32" :x="node.x + node.width / 2" :y="node.y + node.height * .48" text-anchor="middle">{{ node.kind === 'image' ? '图片' : node.kind === 'video' ? '视频' : node.kind === 'text' ? '文本' : '音频' }}</text>
                 </g>
               </svg>
               <svg v-else class="empty-preview" viewBox="0 0 48 48" fill="currentColor"><circle cx="33" cy="14" r="4" /><path d="M4 37 18 17a2 2 0 0 1 3.3 0l7.2 10.2 3.3-4.6a2 2 0 0 1 3.2 0L44 37Z" /></svg>

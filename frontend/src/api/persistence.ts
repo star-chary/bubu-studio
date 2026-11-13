@@ -4,10 +4,12 @@ import type { PromptPart } from '../canvas/prompt'
 import type { VideoMode, VideoOptions } from '../models/videoModels'
 import type { StoredAsset } from './assets'
 import type { MediaNodeData } from '../canvas/media'
+import type { TextNodeData } from '../canvas/textNode'
 import type { ImageGenerationOptions } from '../models/imageModels'
 
 export interface CanvasSnapshot {
-  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'firstFrameId' | 'videoOptions' | 'modelSelection' | 'origin' | 'referenceIds' | 'copySourceKey'> }[]
+  formatVersion?: number
+  nodes: { id: string; position: { x: number; y: number }; data: Pick<MediaNodeData, 'kind' | 'name' | 'prompt' | 'promptParts' | 'imageModel' | 'imageOptions' | 'videoModel' | 'videoMode' | 'firstFrameId' | 'videoOptions' | 'modelSelection' | 'origin' | 'referenceIds' | 'textReferenceIds' | 'copySourceKey'> | TextNodeData }[]
   viewport: { x: number; y: number; zoom: number }
 }
 export interface TaskReference { nodeId: string; assetKey: string; kind: 'image' | 'video' | 'audio'; role?: 'first_frame' }
@@ -38,7 +40,7 @@ export interface SavedCanvas {
 }
 export interface CanvasSummary {
   id: string; title: string; updatedAt: string; nodeCount: number
-  preview: { position: { x: number; y: number }; kind: 'image' | 'video' | 'audio' }[]
+  preview: { position: { x: number; y: number }; kind: 'image' | 'video' | 'audio' | 'text' }[]
 }
 export class PersistenceError extends Error {
   constructor(message: string, public code: string, public status: number) { super(message) }

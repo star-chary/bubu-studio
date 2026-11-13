@@ -24,7 +24,7 @@ type CanvasNodeCreation struct {
 	Created  bool     `json:"created"`
 }
 
-var numberedMediaNode = regexp.MustCompile(`^(?:图片|视频)节点 ([0-9]+)$`)
+var numberedMediaNode = regexp.MustCompile(`^(?:图片|视频|文本)节点 ([0-9]+)$`)
 
 // CreateOwnedCanvasNode appends to the latest saved canvas while holding its
 // row lock. Concurrent whole-snapshot saves retain their existing version check.
